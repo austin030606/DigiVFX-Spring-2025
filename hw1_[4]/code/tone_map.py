@@ -2,6 +2,13 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 
+def gamma_correction(im, gamma):
+    # suppose im is correct im_d hdr image
+    im_scaled = np.clip(im * 255, 0, 255)
+    im_gamma_corrected = ((im_scaled / 255) ** (1 / 2.2)) * 255
+    return im_gamma_corrected
+
+
 class ToneMap:
     def __init__(self):
         pass
@@ -11,7 +18,7 @@ class ToneMap:
 
 # L = 0.27R + 0.67G + 0.06B
 class ToneMapReinhard(ToneMap):
-    def __init__(self, luminance_coefs: np.ndarray = None, delta = 0.00001, a = 0.18):
+    def __init__(self, luminance_coefs: np.ndarray = None, delta = 0.00001, a = 0.18, L_white = None, map_type = "global"):
         super().__init__()
         if luminance_coefs == None:
             luminance_coefs = np.array([0.06, 0.67, 0.27])
@@ -19,14 +26,34 @@ class ToneMapReinhard(ToneMap):
         self.luminance_coefs = luminance_coefs
         self.delta = delta
         self.a = a
+        self.L_white = L_white
+        self.map_type = map_type
 
     def process(self, im):
+        im_d = im.copy()
+
         Lw = self.compute_world_luminance(im)
         Lw_bar = self.get_log_average_luminance_of(Lw)
         
         L = (self.a / Lw_bar) * Lw
-        print(L.shape, self.a / Lw_bar)
-        pass
+
+        Ld = None
+        if self.map_type == "global":
+            if self.L_white == None:
+                self.L_white = np.max(L)
+            Ld = (L * (1 + (L / (self.L_white ** 2)))) / (1 + L)
+        elif self.map_type == "local":
+            pass
+        else:
+            print("map type not implemented")
+            raise NotImplementedError()
+
+        Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
+        Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
+        im_d = Ld_3 * (im / Lw_3)
+
+        # im_d_corrected = ((im_d / np.max(im_d)) ** (1 / self.gamma)) * np.max(im_d)
+        return im_d
 
     def compute_world_luminance(self, im):
         L = np.zeros((im.shape[0], im.shape[1]))
