@@ -2,7 +2,7 @@ import argparse
 import os
 import cv2
 import numpy as np
-
+from tone_map import *
 
 
 ROOT = os.path.abspath('.') + "/"
@@ -19,8 +19,9 @@ if __name__ == '__main__':
     filename = ROOT + opt.hdr_image
     
     hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
-    print(type(hdr_im))
 
+    tonemap = ToneMapReinhard()
+    res_Reinhard = tonemap.process(hdr_im)
     # # Tonemap HDR image
     # tonemap1 = cv2.createTonemap(gamma=2.2)
     # res_debevec = tonemap1.process(hdr_im.copy())
