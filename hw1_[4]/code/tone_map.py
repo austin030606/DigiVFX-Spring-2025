@@ -34,4 +34,10 @@ class ToneMapReinhard(ToneMap):
         return L
     
     def get_log_average_luminance_of(self, L):
-        return 1.0
+        log_sum = 0.0
+        
+        for i in range(L.shape[0]):
+            for j in range(L.shape[1]):
+                log_sum += np.log(self.delta + L[i][j])
+
+        return np.exp(log_sum) / (L.shape[0] * L.shape[1])
