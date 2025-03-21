@@ -4,7 +4,6 @@ from matplotlib import pyplot as plt
 
 def gamma_correction(im, gamma):
     # suppose im is correct im_d hdr image
-    # im_scaled = np.clip(im * 255, 0, 255)
     im_gamma_corrected = ((im) ** (1 / gamma))
     return im_gamma_corrected
 
@@ -16,7 +15,6 @@ class ToneMap:
     def process(self, im: np.ndarray):
         raise NotImplementedError()
 
-# L = 0.27R + 0.67G + 0.06B
 class ToneMapReinhard(ToneMap):
     def __init__(
             self, 
@@ -58,11 +56,15 @@ class ToneMapReinhard(ToneMap):
         if self.map_type == "global":
             if self.L_white == None:
                 self.L_white = np.max(L)
+
+            # apply transformation for each pixel
             Ld = (L * (1 + (L / (self.L_white ** 2)))) / (1 + L)
+
         elif self.map_type == "local":
             R1 = self.compute_gaussian_kernels(1)
             R2 = self.compute_gaussian_kernels(2)
 
+            # apply kernel and calculate V(x, y, s)
             V1 = []
             V2 = []
             V = []
@@ -73,8 +75,8 @@ class ToneMapReinhard(ToneMap):
                 V2.append(v2)
                 V.append((v1 - v2)/((((2 ** self.phi) * self.a)/(s ** 2)) + v1))
 
-            s_m_idx = np.zeros((im.shape[0], im.shape[1]), np.uint)
-            
+            # calculate s_max for each position
+            s_m_idx = np.zeros((im.shape[0], im.shape[1]), np.uint)            
             for i in range(s_m_idx.shape[0]):
                 for j in range(s_m_idx.shape[1]):
                     for idx in range(self.scales.size):
@@ -83,32 +85,22 @@ class ToneMapReinhard(ToneMap):
                         else:
                             break
             
+            # apply transformation for each pixel
             Ld = np.zeros(L.shape)
             for i in range(Ld.shape[0]):
                 for j in range(Ld.shape[1]):
                     Ld[i][j] = L[i][j] / (1 + V1[s_m_idx[i][j]][i][j])
-            # print(np.min(s_m), np.max(s_m))
-            # print(cnt)
-            # print(im.shape[0] * im.shape[1])
-            # plt.hist(s_m.ravel())
-            # plt.show()
-
-            # im_test = cv2.imread('../data/memorial_ldr_Reinhard.jpg')
-            # cv2.imshow('Original', im_test)
-            # cv2.imshow('Kernel Blur', cv2.filter2D(im_test, -1, R2[5]))
-            # cv2.imshow('Gaussian Blur', cv2.GaussianBlur(im_test,(9,9),self.alphas[0] * 9))
-
-            # cv2.waitKey()
-            # cv2.destroyAllWindows()
+            
         else:
             print("map type not implemented")
             raise NotImplementedError()
 
+        # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
         im_d = Ld_3 * (im / Lw_3)
 
-        # im_d_corrected = ((im_d / np.max(im_d)) ** (1 / self.gamma)) * np.max(im_d)
+        # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
             return im_d
         else:
@@ -120,13 +112,11 @@ class ToneMapReinhard(ToneMap):
 
         for i in range(im.shape[0]):
             for j in range(im.shape[1]):
+                # apply the conversion for each pixel
+                # for example if luminance_coefs = [0.06, 0.67, 0.27]
+                # then L = 0.06B + 0.67G + 0.27R
                 L[i][j] = self.luminance_coefs.dot(im[i][j])
-                # print(L[i][j])
-                # print((self.luminance_coefs[0] * im[i][j][0])+(self.luminance_coefs[1] * im[i][j][1])+(self.luminance_coefs[2] * im[i][j][2]))
-        
-        # print(np.min(L), np.max(L))
-        # plt.hist(L.ravel(), 256)
-        # plt.show()
+                
         return L
     
     def get_log_average_luminance_of(self, L):
@@ -136,15 +126,11 @@ class ToneMapReinhard(ToneMap):
             for j in range(L.shape[1]):
                 log_sum += np.log(self.delta + L[i][j])
 
-        # print(f"log_sum: {log_sum}")
-        # print(f"np.exp(log_sum) / (L.shape[0] * L.shape[1]): {np.exp(log_sum) / (L.shape[0] * L.shape[1])}")
-        # print(f"np.exp(log_sum / (L.shape[0] * L.shape[1])): {np.exp(log_sum / (L.shape[0] * L.shape[1]))}")
         return np.exp(log_sum / (L.shape[0] * L.shape[1]))
     
     def compute_gaussian_kernels(self, alpha_i):
         kernels = []
 
-        # cnt = 0
         alpha = self.alphas[alpha_i - 1]
         for s in self.scales:
             kernel = np.zeros((s,s))
@@ -155,11 +141,5 @@ class ToneMapReinhard(ToneMap):
                     kernel[i][j] = (1 / (np.pi * ((alpha * s) ** 2))) * np.exp((-(x * x + y * y)) / ((alpha * s) ** 2))
             kernel /= np.sum(kernel)
             kernels.append(kernel)
-            # cnt += 1
-            # if cnt == 5:
-                # print((1 / (np.pi * ((alpha * 1) ** 2))))
-                # print(np.sum(kernel))
-                # print(kernel)
-            #     break
 
         return kernels

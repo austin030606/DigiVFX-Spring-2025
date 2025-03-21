@@ -5,37 +5,36 @@ import numpy as np
 from tone_map import *
 
 
-ROOT = os.path.abspath('.') + "/"
+ROOT = os.path.abspath(".") + "/"
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--hdr_image', type=str, default='../data/memorial.hdr', help='path to the input .hdr file')
+    parser.add_argument("--hdr_image", type=str, default="../data/memorial.hdr", help="path to the input .hdr file")
+    parser.add_argument("--output_filename_postfix", type=str, default=None, help="output filename postfix")
+    parser.add_argument("--tone_map", type=str, default="Reinhard", help="tone map method")
+    parser.add_argument("--tone_map_type", type=str, default="local", help="tone map type for Reinhard's method")
+    parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
     opt = parser.parse_args()
     return opt
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     opt = parse_opt()
     filename = ROOT + opt.hdr_image
     
     hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
 
-    tonemap = ToneMapReinhard(gamma=2.2, map_type='local')
-    res_Reinhard = tonemap.process(hdr_im.copy())
+    if opt.tone_map == "Reinhard":
+        tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type)
+        res_Reinhard = tonemap.process(hdr_im.copy())
+        
+        if opt.gamma == None:
+            res_Reinhard = gamma_correction(res_Reinhard, 2.2)
+        
+        res_Reinhard_corrected_8bit = np.clip(res_Reinhard*255, 0, 255).astype("uint8")
 
-    # res_Reinhard_corrected = gamma_correction(res_Reinhard, 2.2)
-    res_Reinhard_corrected_8bit = np.clip(res_Reinhard*255, 0, 255).astype('uint8')
-
-    cv2.imwrite(filename[:-4] + "_ldr_Reinhard_local.jpg", res_Reinhard_corrected_8bit)
-    # # Tonemap HDR image
-    # tonemap1 = cv2.createTonemap(gamma=2.2)
-    # res_debevec = tonemap1.process(hdr_im.copy())
-    # tonemap2 = cv2.createTonemap(gamma=1.3)
-    # res_robertson = tonemap2.process(hdr_im.copy())
-
-    # # Convert datatype to 8-bit and save
-    # res_debevec_8bit = np.clip(res_debevec*255, 0, 255).astype('uint8')
-    # res_robertson_8bit = np.clip(res_robertson*255, 0, 255).astype('uint8')
-    # cv2.imwrite("ldr_debevec.jpg", res_debevec_8bit)
-    # cv2.imwrite("ldr_robertson.jpg", res_robertson_8bit)
+        if opt.output_filename_postfix == None:
+            cv2.imwrite(filename[:-4] + "_" + opt.tone_map + "_" + opt.tone_map_type + ".jpg", res_Reinhard_corrected_8bit)
+        else:
+            cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Reinhard_corrected_8bit)
 
