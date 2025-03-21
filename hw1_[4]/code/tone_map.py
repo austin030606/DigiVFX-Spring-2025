@@ -4,8 +4,8 @@ from matplotlib import pyplot as plt
 
 def gamma_correction(im, gamma):
     # suppose im is correct im_d hdr image
-    im_scaled = np.clip(im * 255, 0, 255)
-    im_gamma_corrected = ((im_scaled / 255) ** (1 / 2.2)) * 255
+    # im_scaled = np.clip(im * 255, 0, 255)
+    im_gamma_corrected = ((im) ** (1 / gamma))
     return im_gamma_corrected
 
 
@@ -18,7 +18,7 @@ class ToneMap:
 
 # L = 0.27R + 0.67G + 0.06B
 class ToneMapReinhard(ToneMap):
-    def __init__(self, luminance_coefs: np.ndarray = None, delta = 0.00001, a = 0.18, L_white = None, map_type = "global"):
+    def __init__(self, luminance_coefs: np.ndarray = None, delta = 0.00001, a = 0.18, L_white = None, map_type = "global", gamma = None):
         super().__init__()
         if luminance_coefs == None:
             luminance_coefs = np.array([0.06, 0.67, 0.27])
@@ -28,6 +28,7 @@ class ToneMapReinhard(ToneMap):
         self.a = a
         self.L_white = L_white
         self.map_type = map_type
+        self.gamma = gamma
 
     def process(self, im):
         im_d = im.copy()
@@ -53,7 +54,11 @@ class ToneMapReinhard(ToneMap):
         im_d = Ld_3 * (im / Lw_3)
 
         # im_d_corrected = ((im_d / np.max(im_d)) ** (1 / self.gamma)) * np.max(im_d)
-        return im_d
+        if self.gamma == None:
+            return im_d
+        else:
+            im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
+            return im_d_gamma_corrected
 
     def compute_world_luminance(self, im):
         L = np.zeros((im.shape[0], im.shape[1]))
