@@ -20,13 +20,13 @@ if __name__ == '__main__':
     
     hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
 
-    tonemap = ToneMapReinhard(gamma=2.2)
+    tonemap = ToneMapReinhard(gamma=2.2, map_type='local')
     res_Reinhard = tonemap.process(hdr_im.copy())
 
     # res_Reinhard_corrected = gamma_correction(res_Reinhard, 2.2)
     res_Reinhard_corrected_8bit = np.clip(res_Reinhard*255, 0, 255).astype('uint8')
 
-    cv2.imwrite(filename[:-4] + "_ldr_Reinhard.jpg", res_Reinhard_corrected_8bit)
+    cv2.imwrite(filename[:-4] + "_ldr_Reinhard_local.jpg", res_Reinhard_corrected_8bit)
     # # Tonemap HDR image
     # tonemap1 = cv2.createTonemap(gamma=2.2)
     # res_debevec = tonemap1.process(hdr_im.copy())
