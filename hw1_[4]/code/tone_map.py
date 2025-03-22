@@ -11,13 +11,12 @@ def gamma_correction(im, gamma):
 class ToneMap:
     def __init__(
             self,
-            luminance_coefs: np.ndarray = None,
+            luminance_coefs = None,
             gamma = None):
-        if luminance_coefs == None:
-            luminance_coefs = np.array([0.06, 0.67, 0.27])
-        
+
         self.luminance_coefs = luminance_coefs
         self.gamma = gamma
+        self.delta = 0.00001
         pass
 
     def process(self, im: np.ndarray):
@@ -25,7 +24,6 @@ class ToneMap:
     
     def compute_world_luminance(self, im):
         L = np.zeros((im.shape[0], im.shape[1]))
-
         for i in range(im.shape[0]):
             for j in range(im.shape[1]):
                 # apply the conversion for each pixel
@@ -34,11 +32,20 @@ class ToneMap:
                 L[i][j] = self.luminance_coefs.dot(im[i][j])
                 
         return L
+    
+    def get_log_average_luminance_of(self, L):
+        log_sum = 0.0
+        
+        for i in range(L.shape[0]):
+            for j in range(L.shape[1]):
+                log_sum += np.log(self.delta + L[i][j])
+
+        return np.exp(log_sum / (L.shape[0] * L.shape[1]))
 
 class ToneMapReinhard(ToneMap):
     def __init__(
             self, 
-            luminance_coefs: np.ndarray = None, 
+            luminance_coefs = np.array([0.06, 0.67, 0.27]), 
             gamma = None,
             delta = 0.00001, 
             a = 0.18, 
@@ -127,15 +134,6 @@ class ToneMapReinhard(ToneMap):
             im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
             return im_d_gamma_corrected
     
-    def get_log_average_luminance_of(self, L):
-        log_sum = 0.0
-        
-        for i in range(L.shape[0]):
-            for j in range(L.shape[1]):
-                log_sum += np.log(self.delta + L[i][j])
-
-        return np.exp(log_sum / (L.shape[0] * L.shape[1]))
-    
     def compute_gaussian_kernels(self, alpha_i):
         kernels = []
 
@@ -155,18 +153,48 @@ class ToneMapReinhard(ToneMap):
 class ToneMapDurand(ToneMap):
     def __init__(
             self, 
-            luminance_coefs: np.ndarray = None,
+            luminance_coefs = np.array([1/61, 40/61, 20/61]),
             gamma = None):
-        
         super().__init__(luminance_coefs)
+        self.sigma_s = None
+        self.sigma_r = 0.4
 
     def process(self, im):
+        self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
         im_d = im.copy()
 
         Lw = self.compute_world_luminance(im)
-        
-        Ld = None
+        Lw_log = np.log(Lw).astype(np.float32)
 
+        kernel_size = int(self.sigma_s * 4)
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        
+
+        # f = self.compute_gaussian_kernel(self.sigma_s, kernel_size)
+        # base = np.zeros(Lw_log.shape)
+        # for i in range(base.shape[0]):
+        #     for j in range(base.shape[1]):
+        #         weighted_I = 0
+        #         k = 0
+        #         for x in range(kernel_size):
+        #             for y in range(kernel_size):
+        #                 di = x - (kernel_size // 2)
+        #                 dj = y - (kernel_size // 2)
+        #                 if i + di >= 0 and i + di < Lw_log.shape[0] and j + dj >= 0 and j + dj < Lw_log.shape[1]: 
+        #                     weighted_I += f[x][y] * self.intensity_gaussian(np.abs(Lw_log[i][j] - Lw_log[i + di][j + dj])) * Lw_log[i + di][j + dj]
+        #                     k += f[x][y] * self.intensity_gaussian(np.abs(Lw_log[i][j] - Lw_log[i + di][j + dj])) 
+        #         base[i][j] = weighted_I / k
+        #     print(f"row: {i}", end='\r')
+        base = cv2.bilateralFilter(Lw_log, kernel_size, self.sigma_s, self.sigma_r)
+
+        detail = Lw_log - base
+        scale = 4 / (np.max(base) - np.min(base))
+        compressed = (base - np.max(base)) * scale
+        Ld_log = compressed + detail
+        Ld = np.exp(Ld_log)
+        # print(Ld.max(), Ld.min())
+        
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
@@ -178,3 +206,16 @@ class ToneMapDurand(ToneMap):
         else:
             im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
             return im_d_gamma_corrected
+        
+    def compute_gaussian_kernel(self, sigma, s):
+        kernel = np.zeros((s,s))
+        for i in range(s):
+            for j in range(s):
+                x = i - (s // 2)
+                y = j - (s // 2)
+                kernel[i][j] = np.exp((-(x * x + y * y)) / (2 * ((sigma) ** 2)))
+        # kernel /= np.sum(kernel)
+        return kernel
+    
+    def intensity_gaussian(self, d):
+        return np.exp((-(d * d)) / (2 * ((self.sigma_r) ** 2)))

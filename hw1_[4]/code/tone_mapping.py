@@ -37,4 +37,18 @@ if __name__ == "__main__":
             cv2.imwrite(filename[:-4] + "_" + opt.tone_map + "_" + opt.tone_map_type + ".jpg", res_Reinhard_corrected_8bit)
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Reinhard_corrected_8bit)
+    elif opt.tone_map == "Durand":
+        tonemap = ToneMapDurand(gamma=opt.gamma)
+        # hdr_im = cv2.resize(hdr_im, (0,0), fx=0.2, fy=0.2)
+        res_Durand = tonemap.process(hdr_im.copy())
+
+        if opt.gamma == None:
+            res_Durand = gamma_correction(res_Durand, 2.2)
+        
+        res_Durand_corrected_8bit = np.clip(res_Durand*255, 0, 255).astype("uint8")
+
+        if opt.output_filename_postfix == None:
+            cv2.imwrite(filename[:-4] + "_" + opt.tone_map + ".jpg", res_Durand_corrected_8bit)
+        else:
+            cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Durand_corrected_8bit)
 
