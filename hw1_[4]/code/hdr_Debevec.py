@@ -5,6 +5,7 @@ import os
 import glob
 import rawpy
 import imageio.v3 as iio
+import argparse
 
 # %%
 # load ppm and exposure values using their name from a directory
@@ -79,22 +80,40 @@ def tone_map(hdr_image, gamma=2.2, exposure=1e-7):
 
 
 def main():
-    data_path = "../data/raw/"
-    output_path = "../data/output/"
-    
-    # turn_images_to_tiff
-    # turn_images_to_tiff(data_path)
-    
-    images, exposures = load_images_and_exposures_from_dir(data_path)
-    
-    radiance_map = compute_radiance_map_log(images, exposures)
-    
-    tone_mapped = tone_map(radiance_map, exposure=5e-7)
-    iio.imwrite(output_path + "tone_mapped.jpg", tone_mapped)
-    
-    radiance_map /= radiance_map.max()
-    iio.imwrite(output_path + "output.hdr", radiance_map.astype(np.float32))
+    parser = argparse.ArgumentParser(description="HDR Radiance Map Generator")
+    parser.add_argument(
+        "--input", "-i", 
+        type=str, 
+        default="../data/raw/", 
+        help="Path to input directory containing RAW TIFF images"
+    )
+    parser.add_argument(
+        "--output", "-o", 
+        type=str, 
+        default="../data/output/", 
+        help="Path to output directory"
+    )
+    args = parser.parse_args()
 
+    data_path = args.input
+    output_path = args.output
+
+    os.makedirs(output_path, exist_ok=True)
+
+    # Load images and exposures
+    images, exposures = load_images_and_exposures_from_dir(data_path)
+
+    # Compute radiance map
+    radiance_map = compute_radiance_map_log(images, exposures)
+
+    # Save tone mapped preview
+    tone_mapped = tone_map(radiance_map, exposure=5e-7)
+    iio.imwrite(os.path.join(output_path, "tone_mapped.jpg"), tone_mapped)
+
+    # Save normalized .hdr
+    radiance_map /= radiance_map.max()
+    iio.imwrite(os.path.join(output_path, "output.hdr"), radiance_map.astype(np.float32))
+    # print(f"Saved HDR image and tone-mapped preview to {output_path}")
 
 if __name__ == "__main__":
     main()
