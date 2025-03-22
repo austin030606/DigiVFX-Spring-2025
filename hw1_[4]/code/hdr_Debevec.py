@@ -96,38 +96,5 @@ def main():
     iio.imwrite(output_path + "output.hdr", radiance_map.astype(np.float32))
 
 
-
-# %%
-# data_path = "../data/raw/"
-# turn_images_to_tiff(data_path)
-
-# %%
-data_path = "../data/raw/"
-images, exposures = load_images_and_exposures_from_dir(data_path)
-
-# %%
-exposures
-
-# %%
-radiance_map = compute_radiance_map_log(images, exposures)
-# radiance_map_norm = radiance_map / np.max(radiance_map)
-
-# %%
-tone_mapped = tone_map(radiance_map, exposure=5e-7)
-
-# %%
-iio.imwrite("../data/tone_mapped.jpg", tone_mapped)
-
-# %%
-radiance_map /= radiance_map.max()
-OUTPUT_HDR = "../data/output.hdr"
-iio.imwrite(OUTPUT_HDR, radiance_map.astype(np.float32))
-
-# %%
-iio.imwrite("tone_mapped.jpg", tone_mapped)
-
-# %%
-print("Radiance map range:", np.min(radiance_map), np.max(radiance_map))
-
-
-
+if __name__ == "__main__":
+    main()
