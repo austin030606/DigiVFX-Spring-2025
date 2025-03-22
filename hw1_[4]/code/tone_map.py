@@ -24,21 +24,26 @@ class ToneMap:
     
     def compute_world_luminance(self, im):
         L = np.zeros((im.shape[0], im.shape[1]))
-        for i in range(im.shape[0]):
-            for j in range(im.shape[1]):
-                # apply the conversion for each pixel
-                # for example if luminance_coefs = [0.06, 0.67, 0.27]
-                # then L = 0.06B + 0.67G + 0.27R
-                L[i][j] = self.luminance_coefs.dot(im[i][j])
-                
+        B = im[:,:,0]
+        G = im[:,:,1]
+        R = im[:,:,2]
+        # for i in range(im.shape[0]):
+        #     for j in range(im.shape[1]):
+        #         # apply the conversion for each pixel
+        #         # for example if luminance_coefs = [0.06, 0.67, 0.27]
+        #         # then L = 0.06B + 0.67G + 0.27R
+        #         L[i][j] = self.luminance_coefs.dot(im[i][j])
+        L = self.luminance_coefs[0] * B + self.luminance_coefs[1] * G + self.luminance_coefs[2] * R
         return L
     
     def get_log_average_luminance_of(self, L):
         log_sum = 0.0
         
-        for i in range(L.shape[0]):
-            for j in range(L.shape[1]):
-                log_sum += np.log(self.delta + L[i][j])
+        # for i in range(L.shape[0]):
+        #     for j in range(L.shape[1]):
+        #         log_sum += np.log(self.delta + L[i][j])
+        L += self.delta
+        log_sum = np.sum(np.log(L))
 
         return np.exp(log_sum / (L.shape[0] * L.shape[1]))
 
@@ -98,21 +103,34 @@ class ToneMapReinhard(ToneMap):
                 V2.append(v2)
                 V.append((v1 - v2)/((((2 ** self.phi) * self.a)/(s ** 2)) + v1))
 
+            V1 = np.array(V1)
+            V = np.array(V)
             # calculate s_max for each position
-            s_m_idx = np.zeros((im.shape[0], im.shape[1]), np.uint)            
+            s_m_idx = np.zeros((im.shape[0], im.shape[1]), np.uint)
+            V1_s_m = np.zeros(V1[0].shape)
             for i in range(s_m_idx.shape[0]):
                 for j in range(s_m_idx.shape[1]):
-                    for idx in range(self.scales.size):
-                        if np.abs(V[idx][i][j]) < self.epsilon:
-                            s_m_idx[i][j] = idx
-                        else:
-                            break
-            
+                    indices = np.where(np.abs(V[:,i,j]) > self.epsilon)[0]
+                    if indices.size > 0:
+                        idx = indices[0]
+                        if idx > 0:
+                            idx -= 1
+                    else:
+                        idx = self.scales.size - 1
+                    # s_m_idx[i][j] = idx
+                    V1_s_m[i][j] = V1[idx][i][j]
+                    # for idx in range(self.scales.size):
+                    #     if np.abs(V[idx][i][j]) < self.epsilon:
+                    #         s_m_idx[i][j] = idx
+                    #     else:
+                    #         break
+
             # apply transformation for each pixel
             Ld = np.zeros(L.shape)
-            for i in range(Ld.shape[0]):
-                for j in range(Ld.shape[1]):
-                    Ld[i][j] = L[i][j] / (1 + V1[s_m_idx[i][j]][i][j])
+            # for i in range(Ld.shape[0]):
+            #     for j in range(Ld.shape[1]):
+            #         Ld[i][j] = L[i][j] / (1 + V1[s_m_idx[i][j]][i][j])
+            Ld = L / (1 + V1_s_m)
             
         else:
             print("map type not implemented")

@@ -13,6 +13,7 @@ def parse_opt():
     parser.add_argument("--output_filename_postfix", type=str, default=None, help="output filename postfix")
     parser.add_argument("--tone_map", type=str, default="Reinhard", help="tone map method")
     parser.add_argument("--tone_map_type", type=str, default="local", help="tone map type for Reinhard's method")
+    parser.add_argument("--scale", type=int, default=43, help="scale for Reinhard's local method")
     parser.add_argument("--base_contrast", type=float, default=None, help="base contrast for Durand's method")
     parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
     opt = parser.parse_args()
@@ -26,7 +27,7 @@ if __name__ == "__main__":
     hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
 
     if opt.tone_map == "Reinhard":
-        tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type)
+        tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type, scales=np.arange(1,opt.scale,2))
         res_Reinhard = tonemap.process(hdr_im.copy())
         
         if opt.gamma == None:
