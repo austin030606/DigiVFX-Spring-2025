@@ -9,36 +9,52 @@ def gamma_correction(im, gamma):
 
 
 class ToneMap:
-    def __init__(self):
+    def __init__(
+            self,
+            luminance_coefs: np.ndarray = None,
+            gamma = None):
+        if luminance_coefs == None:
+            luminance_coefs = np.array([0.06, 0.67, 0.27])
+        
+        self.luminance_coefs = luminance_coefs
+        self.gamma = gamma
         pass
 
     def process(self, im: np.ndarray):
         raise NotImplementedError()
+    
+    def compute_world_luminance(self, im):
+        L = np.zeros((im.shape[0], im.shape[1]))
+
+        for i in range(im.shape[0]):
+            for j in range(im.shape[1]):
+                # apply the conversion for each pixel
+                # for example if luminance_coefs = [0.06, 0.67, 0.27]
+                # then L = 0.06B + 0.67G + 0.27R
+                L[i][j] = self.luminance_coefs.dot(im[i][j])
+                
+        return L
 
 class ToneMapReinhard(ToneMap):
     def __init__(
             self, 
             luminance_coefs: np.ndarray = None, 
+            gamma = None,
             delta = 0.00001, 
             a = 0.18, 
             L_white = None, 
             map_type = "global", 
-            gamma = None,
             alphas = np.array([1.0/(2*(2**(1/2))), 1.6/(2*(2**(1/2)))]),
             scales = np.arange(1,43,2),
             phi = 8.0,
             epsilon = 0.05):
         
-        super().__init__()
-        if luminance_coefs == None:
-            luminance_coefs = np.array([0.06, 0.67, 0.27])
+        super().__init__(luminance_coefs, gamma)
         
-        self.luminance_coefs = luminance_coefs
         self.delta = delta
         self.a = a
         self.L_white = L_white
         self.map_type = map_type
-        self.gamma = gamma
         self.alphas = alphas
         self.scales = scales
         self.phi = phi
@@ -100,24 +116,16 @@ class ToneMapReinhard(ToneMap):
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
         im_d = Ld_3 * (im / Lw_3)
 
+        # print(np.min(im), np.max(im))
+        # print(np.min(Lw), np.max(Lw))
+        # print(np.min(Ld), np.max(Ld))
+        # print(np.min(im_d), np.max(im_d))
         # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
             return im_d
         else:
             im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
             return im_d_gamma_corrected
-
-    def compute_world_luminance(self, im):
-        L = np.zeros((im.shape[0], im.shape[1]))
-
-        for i in range(im.shape[0]):
-            for j in range(im.shape[1]):
-                # apply the conversion for each pixel
-                # for example if luminance_coefs = [0.06, 0.67, 0.27]
-                # then L = 0.06B + 0.67G + 0.27R
-                L[i][j] = self.luminance_coefs.dot(im[i][j])
-                
-        return L
     
     def get_log_average_luminance_of(self, L):
         log_sum = 0.0
@@ -143,3 +151,30 @@ class ToneMapReinhard(ToneMap):
             kernels.append(kernel)
 
         return kernels
+    
+class ToneMapDurand(ToneMap):
+    def __init__(
+            self, 
+            luminance_coefs: np.ndarray = None,
+            gamma = None):
+        
+        super().__init__(luminance_coefs)
+
+    def process(self, im):
+        im_d = im.copy()
+
+        Lw = self.compute_world_luminance(im)
+        
+        Ld = None
+
+        # convert luminance back to RGB
+        Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
+        Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
+        im_d = Ld_3 * (im / Lw_3)
+
+        # apply gamma correction before returning if provided with gamma value
+        if self.gamma == None:
+            return im_d
+        else:
+            im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
+            return im_d_gamma_corrected
