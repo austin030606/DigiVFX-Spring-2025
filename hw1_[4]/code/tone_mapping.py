@@ -15,6 +15,7 @@ def parse_opt():
     parser.add_argument("--tone_map_type", type=str, default="local", help="tone map type for Reinhard's method")
     parser.add_argument("--scale", type=int, default=43, help="scale for Reinhard's local method")
     parser.add_argument("--base_contrast", type=float, default=None, help="base contrast for Durand's method")
+    parser.add_argument("--limit_runtime", type=str, default="Yes", help="whether to limit the runtime of Durand's method, type \"No\" to disable")
     parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
     opt = parser.parse_args()
     return opt
@@ -40,7 +41,7 @@ if __name__ == "__main__":
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Reinhard_corrected_8bit)
     elif opt.tone_map == "Durand":
-        tonemap = ToneMapDurand(gamma=opt.gamma, base_contrast=opt.base_contrast)
+        tonemap = ToneMapDurand(gamma=opt.gamma, base_contrast=opt.base_contrast, limit_runtime=opt.limit_runtime)
         res_Durand = tonemap.process(hdr_im.copy())
 
         if opt.gamma == None:

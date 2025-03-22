@@ -182,13 +182,19 @@ class ToneMapDurand(ToneMap):
             self, 
             luminance_coefs = np.array([1/61, 40/61, 20/61]),
             gamma = None,
-            base_contrast = 4):
+            base_contrast = 4,
+            limit_runtime = "Yes"):
         super().__init__(luminance_coefs, gamma)
         self.sigma_s = None
         self.sigma_r = 0.4
         if base_contrast == None:
             base_contrast = 4
         self.base_contrast = base_contrast
+        if limit_runtime != "No":
+            limit_runtime = True
+        else:
+            limit_runtime = False
+        self.limit_runtime = limit_runtime
 
     def process(self, im):
         self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
@@ -216,6 +222,16 @@ class ToneMapDurand(ToneMap):
         #                     k += f[x][y] * self.intensity_gaussian(np.abs(Lw_log[i][j] - Lw_log[i + di][j + dj])) 
         #         base[i][j] = weighted_I / k
         #     print(f"row: {i}", end='\r')
+
+        # the maximum sigma_s is set to this to limit the runtime when the input image is too large
+        if self.limit_runtime and (kernel_size * max(im.shape[0], im.shape[1]) > 400000):
+            self.sigma_s = 400000 / (max(im.shape[0], im.shape[1]) * 4)
+            kernel_size = int(self.sigma_s * 4)
+            # print(self.sigma_s)
+            # print(kernel_size)
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+
         base = cv2.bilateralFilter(Lw_log, kernel_size, self.sigma_r, self.sigma_s)
 
         detail = Lw_log - base
