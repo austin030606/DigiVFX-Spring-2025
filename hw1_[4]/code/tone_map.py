@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
+import gc
 
 def gamma_correction(im, gamma):
     # suppose im is correct im_d hdr image
@@ -94,16 +95,17 @@ class ToneMapReinhard(ToneMap):
 
             # apply kernel and calculate V(x, y, s)
             V1 = []
-            V2 = []
+            # V2 = []
             V = []
             for i, s in enumerate(self.scales):
                 v1 = cv2.filter2D(L, -1, R1[i])
                 v2 = cv2.filter2D(L, -1, R2[i])
                 V1.append(v1)
-                V2.append(v2)
+                # V2.append(v2)
                 V.append((v1 - v2)/((((2 ** self.phi) * self.a)/(s ** 2)) + v1))
 
             V1 = np.array(V1)
+            # V2 = np.array(V2)
             V = np.array(V)
             # calculate s_max for each position
             s_m_idx = np.zeros((im.shape[0], im.shape[1]), np.uint)
@@ -124,13 +126,20 @@ class ToneMapReinhard(ToneMap):
                     #         s_m_idx[i][j] = idx
                     #     else:
                     #         break
-
+                print(f"{i}, {j}", end='\r')
+            print("here")
             # apply transformation for each pixel
             Ld = np.zeros(L.shape)
             # for i in range(Ld.shape[0]):
             #     for j in range(Ld.shape[1]):
             #         Ld[i][j] = L[i][j] / (1 + V1[s_m_idx[i][j]][i][j])
             Ld = L / (1 + V1_s_m)
+            print("done")
+
+            del V
+            del V1
+            # del V2
+            gc.collect()
             
         else:
             print("map type not implemented")
