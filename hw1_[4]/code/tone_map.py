@@ -154,10 +154,14 @@ class ToneMapDurand(ToneMap):
     def __init__(
             self, 
             luminance_coefs = np.array([1/61, 40/61, 20/61]),
-            gamma = None):
-        super().__init__(luminance_coefs)
+            gamma = None,
+            base_contrast = 4):
+        super().__init__(luminance_coefs, gamma)
         self.sigma_s = None
         self.sigma_r = 0.4
+        if base_contrast == None:
+            base_contrast = 4
+        self.base_contrast = base_contrast
 
     def process(self, im):
         self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
@@ -170,7 +174,6 @@ class ToneMapDurand(ToneMap):
         if kernel_size % 2 == 0:
             kernel_size += 1
         
-
         # f = self.compute_gaussian_kernel(self.sigma_s, kernel_size)
         # base = np.zeros(Lw_log.shape)
         # for i in range(base.shape[0]):
@@ -186,14 +189,13 @@ class ToneMapDurand(ToneMap):
         #                     k += f[x][y] * self.intensity_gaussian(np.abs(Lw_log[i][j] - Lw_log[i + di][j + dj])) 
         #         base[i][j] = weighted_I / k
         #     print(f"row: {i}", end='\r')
-        base = cv2.bilateralFilter(Lw_log, kernel_size, self.sigma_s, self.sigma_r)
+        base = cv2.bilateralFilter(Lw_log, kernel_size, self.sigma_r, self.sigma_s)
 
         detail = Lw_log - base
-        scale = 4 / (np.max(base) - np.min(base))
+        scale = self.base_contrast / (np.max(base) - np.min(base))
         compressed = (base - np.max(base)) * scale
         Ld_log = compressed + detail
         Ld = np.exp(Ld_log)
-        # print(Ld.max(), Ld.min())
         
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)

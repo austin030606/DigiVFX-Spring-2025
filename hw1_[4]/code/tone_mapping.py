@@ -13,6 +13,7 @@ def parse_opt():
     parser.add_argument("--output_filename_postfix", type=str, default=None, help="output filename postfix")
     parser.add_argument("--tone_map", type=str, default="Reinhard", help="tone map method")
     parser.add_argument("--tone_map_type", type=str, default="local", help="tone map type for Reinhard's method")
+    parser.add_argument("--base_contrast", type=float, default=None, help="base contrast for Durand's method")
     parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
     opt = parser.parse_args()
     return opt
@@ -38,8 +39,7 @@ if __name__ == "__main__":
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Reinhard_corrected_8bit)
     elif opt.tone_map == "Durand":
-        tonemap = ToneMapDurand(gamma=opt.gamma)
-        # hdr_im = cv2.resize(hdr_im, (0,0), fx=0.2, fy=0.2)
+        tonemap = ToneMapDurand(gamma=opt.gamma, base_contrast=opt.base_contrast)
         res_Durand = tonemap.process(hdr_im.copy())
 
         if opt.gamma == None:
