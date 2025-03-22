@@ -19,7 +19,6 @@ def MTB(images, max_offset = 500):
     ref_im = images[0]
     ref_im_pyramid = construct_pyramid(ref_im, pyramid_level)
     
-
     offsets = []
     for i in range(1, len(images)):
         cur_im = images[i]
@@ -46,16 +45,18 @@ def MTB(images, max_offset = 500):
 def binarize_using_median(im):
     median = np.median(im)
     res = (im > median).astype(np.uint8)
-    cv2.imshow("binary", (res) * 250)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow("binary", (res) * 250)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
     return res
 
 def compute_exclusion_bitmap(im, d = 4):
     median = np.median(im)
     res1 = (im > median + d).astype(np.uint8)
     res2 = (im < median - d).astype(np.uint8)
-
+    # cv2.imshow("eb", (res1 | res2) * 250)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
     return res1 | res2
 
 def construct_pyramid(im, number_of_levels):
@@ -76,7 +77,7 @@ def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True):
     for k in range(len(ref_pyramid) - 1, -1, -1):
         cur_dx *= 2
         cur_dy *= 2
-        cur_ref  = ref_pyramid[k]
+        cur_ref = ref_pyramid[k]
         cur_im  = im_pyramid[k]
         min_diff = max(ref_pyramid[0].shape[0], ref_pyramid[0].shape[1]) ** 2 + 1
         min_diff_dx = cur_dx
@@ -110,7 +111,6 @@ def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True):
                     min_diff_dy = cur_dy + dy
         
         # print(cur_dx, cur_dy)
-        # print(min_diff_dx, min_diff_dy)
         cur_dx = min_diff_dx
         cur_dy = min_diff_dy
 
