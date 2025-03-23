@@ -290,8 +290,10 @@ class ToneMapFattal(ToneMap):
 
         Lw = self.compute_world_luminance(im)
         H = np.log(Lw + 0.00001).astype(np.float32)
-
-
+        gaussian_pyramid = self.compute_gaussian_pyramid(H)
+        for h in gaussian_pyramid:
+            print(h.shape)
+        exit()
         Ld = np.exp(Ld_log)
         
         # convert luminance back to RGB
@@ -306,12 +308,18 @@ class ToneMapFattal(ToneMap):
             im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
             return im_d_gamma_corrected
         
-    def compute_gaussian_kernel(self, sigma, s):
-        kernel = np.zeros((s,s))
-        for i in range(s):
-            for j in range(s):
-                x = i - (s // 2)
-                y = j - (s // 2)
-                kernel[i][j] = np.exp((-(x * x + y * y)) / (2 * ((sigma) ** 2)))
-        # kernel /= np.sum(kernel)
-        return kernel
+    def compute_gaussian_pyramid(self, H):
+        gaussian_kernel = (1/16) * np.array([[1,2,1],
+                                             [2,4,2],
+                                             [1,2,1]])
+        pyramid = [H.copy()]
+        height = H.shape[0] // 2
+        width = H.shape[1] // 2
+        while height >= 32 and width >= 32:
+            cur_H = cv2.resize(H, (width,height), cv2.INTER_AREA)
+            cur_H = cv2.filter2D(cur_H, -1, gaussian_kernel)
+            pyramid.append(cur_H)
+            height //= 2
+            width //= 2
+
+        return pyramid

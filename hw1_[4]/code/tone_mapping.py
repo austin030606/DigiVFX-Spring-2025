@@ -53,4 +53,17 @@ if __name__ == "__main__":
             cv2.imwrite(filename[:-4] + "_" + opt.tone_map + ".jpg", res_Durand_corrected_8bit)
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Durand_corrected_8bit)
+    elif opt.tone_map == "Fattal":
+        tonemap = ToneMapFattal(gamma=opt.gamma)
+        res_Fattal = tonemap.process(hdr_im.copy())
+
+        if opt.gamma == None:
+            res_Fattal = gamma_correction(res_Fattal, 2.2)
+        
+        res_Fattal_corrected_8bit = np.clip(res_Fattal*255, 0, 255).astype("uint8")
+
+        if opt.output_filename_postfix == None:
+            cv2.imwrite(filename[:-4] + "_" + opt.tone_map + ".jpg", res_Fattal_corrected_8bit)
+        else:
+            cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Fattal_corrected_8bit)
 
