@@ -60,13 +60,16 @@ def compute_exclusion_bitmap(im, d = 4):
     return res1 | res2
 
 def construct_pyramid(im, number_of_levels):
-    res = []
-    cur_im = im.copy()
+    res = [im.copy()]
+    height = im.shape[0] // 2
+    width = im.shape[1] // 2
     for i in range(number_of_levels):
-        if (cur_im.shape[0] <= 1 or cur_im.shape[1] <= 1):
+        if (height <= 1 or width <= 1):
             break
+        cur_im = cv2.resize(im, (width,height))
         res.append(cur_im)
-        cur_im = cv2.resize(cur_im, (0,0), fx=0.5, fy=0.5)
+        height //= 2
+        width //= 2
 
     return res
 
