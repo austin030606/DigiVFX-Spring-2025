@@ -17,6 +17,7 @@ def parse_opt():
     parser.add_argument("--base_contrast", type=float, default=None, help="base contrast for Durand's method")
     parser.add_argument("--limit_runtime", type=str, default="Yes", help="whether to limit the runtime of Durand's method, type \"No\" to disable")
     parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
+    parser.add_argument("--beta", type=float, default=0.8, help="beta value for Fattal's method")
     opt = parser.parse_args()
     return opt
 
@@ -54,7 +55,7 @@ if __name__ == "__main__":
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Durand_corrected_8bit)
     elif opt.tone_map == "Fattal":
-        tonemap = ToneMapFattal(gamma=opt.gamma)
+        tonemap = ToneMapFattal(gamma=opt.gamma, beta=opt.beta)
         res_Fattal = tonemap.process(hdr_im.copy())
 
         if opt.gamma == None:

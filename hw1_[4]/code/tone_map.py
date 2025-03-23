@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 import gc
+from scipy.sparse import csr_matrix 
+from scipy.sparse.linalg import cg, spsolve
 
 def gamma_correction(im, gamma):
     # suppose im is correct im_d hdr image
@@ -238,6 +240,7 @@ class ToneMapDurand(ToneMap):
         scale = self.base_contrast / (np.max(base) - np.min(base))
         compressed = (base - np.max(base)) * scale
         Ld_log = compressed + detail
+        print(Ld_log[0][0])
         Ld = np.exp(Ld_log)
         
         # convert luminance back to RGB
@@ -285,26 +288,121 @@ class ToneMapFattal(ToneMap):
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
         grad_H_x_k, grad_H_y_k = self.compute_gradient_pyramid(gaussian_pyramid)
         Phi = self.calculate_Phi(grad_H_x_k, grad_H_y_k)
+        # exit()
 
-        gradx_kernel = np.array([[0,0,0],
+        grady_kernel = np.array([[0,0,0],
                                  [0,-1,1],
                                  [0,0,0]])
-        grady_kernel = np.array([[0,0,0],
+        gradx_kernel = np.array([[0,0,0],
                                  [0,-1,0],
                                  [0,1,0]])
-        divx_kernel = np.array([[0,0,0],
+        divy_kernel = np.array([[0,0,0],
                                 [-1,1,0],
                                 [0,0,0]])
-        divy_kernel = np.array([[0,-1,0],
+        divx_kernel = np.array([[0,-1,0],
                                 [0,1,0],
                                 [0,0,0]])
-        grad_H_x = cv2.filter2D(H, -1, gradx_kernel)
-        grad_H_y = cv2.filter2D(H, -1, grady_kernel)
+        grad_H_x = cv2.filter2D(H, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE)
+        grad_H_y = cv2.filter2D(H, -1, grady_kernel, borderType=cv2.BORDER_REPLICATE)
+        height = im.shape[0]
+        width = im.shape[1]
         G_x = grad_H_x * Phi
         G_y = grad_H_y * Phi
-        div_G = cv2.filter2D(G_x, -1, divx_kernel) + cv2.filter2D(G_y, -1, divy_kernel)
+        div_G = cv2.filter2D(G_x, -1, divx_kernel, borderType=cv2.BORDER_REPLICATE) + cv2.filter2D(G_y, -1, divy_kernel, borderType=cv2.BORDER_REPLICATE)
+        # print(cv2.filter2D(G_x, -1, divx_kernel, borderType=cv2.BORDER_REPLICATE)[0])
+        # print(grad_H_x[-1])
+        cv2.imshow("I", ((Phi - Phi.min()) / (Phi.max() - Phi.min())))
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
         exit()
+        
+
+        # solve the poison equation
+        row = []
+        col = []
+        val = []
+        cnt = 0
+        b = []
+        height = im.shape[0]
+        width = im.shape[1]
+        # poisson equation
+        for x in range(height):
+            for y in range(width):
+                if x == 0 and y == 0 and False:
+                    row.append(cnt)
+                    col.append(x * width + y)
+                    val.append(1.0)
+
+                    b.append(-4.9115515)
+
+                    cnt += 1
+                else:
+                    if x + 1 < height:
+                        row.append(cnt)
+                        col.append((x + 1) * width + y)
+                        val.append(1.0)
+                    else:
+                        # Reflect at right boundary
+                        row.append(cnt)
+                        col.append(x * width + y)
+                        val.append(1.0)
+
+                    if x - 1 >= 0:
+                        row.append(cnt)
+                        col.append((x - 1) * width + y)
+                        val.append(1.0)
+                    else:
+                        row.append(cnt)
+                        col.append(x * width + y)
+                        val.append(1.0)
+
+                    if y + 1 < width:
+                        row.append(cnt)
+                        col.append(x * width + (y + 1))
+                        val.append(1.0)
+                    else:
+                        row.append(cnt)
+                        col.append(x * width + (y))
+                        val.append(1.0)
+
+                    if y - 1 >= 0:
+                        row.append(cnt)
+                        col.append(x * width + (y - 1))
+                        val.append(1.0)
+                    else:
+                        row.append(cnt)
+                        col.append(x * width + (y))
+                        val.append(1.0)
+
+                    row.append(cnt)
+                    col.append(x * width + y)
+                    val.append(-4.0)
+
+                    b.append(div_G[x][y])
+
+                    cnt += 1
+
+
+        A = csr_matrix((val, (row, col)), shape = (cnt, height * width)) 
+        b = np.array(b)
+        I_vec = spsolve(A, b)
+        # I_vec, exit_code = cg(A, b)
+        # print(f"exit code: {exit_code}")
+        Ld_log = np.zeros((im.shape[0], im.shape[1]))
+        for x in range(height):
+            for y in range(width):
+            #    x = i + 1
+            #    y = j + 1
+               Ld_log[x][y] = I_vec[x * width + y]
+        Ld_log = ((Ld_log - Ld_log.min()) / (Ld_log.max() - Ld_log.min()))
+        print(Ld_log.min(), Ld_log.max())
+        cv2.imshow("I", ((Ld_log - Ld_log.min()) / (Ld_log.max() - Ld_log.min())))
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        exit()
+        print(Ld_log.min(), Ld_log.max())
         Ld = np.exp(Ld_log)
+        print(Ld.min(), Ld.max())
         
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
@@ -335,18 +433,22 @@ class ToneMapFattal(ToneMap):
         return pyramid
     
     def compute_gradient_pyramid(self, pyramid):
-        gradx_kernel = np.array([[0,0,0],
+        grady_kernel = np.array([[0,0,0],
                                  [-1,0,1],
                                  [0,0,0]])
-        grady_kernel = np.array([[0,-1,0],
+        gradx_kernel = np.array([[0,-1,0],
                                  [0,0,0],
                                  [0,1,0]])
         
         gradx_pyramid = []
         grady_pyramid = []
         for k, H in enumerate(pyramid):
-            gradx_pyramid.append(cv2.filter2D(H, -1, gradx_kernel / (2 ** (k + 1))))
-            grady_pyramid.append(cv2.filter2D(H, -1, grady_kernel / (2 ** (k + 1))))
+            # if k == len(pyramid) - 1:
+            #     print(cv2.filter2D(H, -1, gradx_kernel / (2 ** (k + 1)), borderType=cv2.BORDER_REPLICATE)[0:3,0:3])
+            #     print(H[0:3,0:3])
+            #     print(k)
+            gradx_pyramid.append(cv2.filter2D(H, -1, gradx_kernel / (2 ** (k + 1)), borderType=cv2.BORDER_REPLICATE))
+            grady_pyramid.append(cv2.filter2D(H, -1, grady_kernel / (2 ** (k + 1)), borderType=cv2.BORDER_REPLICATE))
 
         return gradx_pyramid, grady_pyramid
     
