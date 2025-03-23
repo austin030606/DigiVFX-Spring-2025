@@ -201,7 +201,7 @@ class ToneMapDurand(ToneMap):
         im_d = im.copy()
 
         Lw = self.compute_world_luminance(im)
-        Lw_log = np.log(Lw).astype(np.float32)
+        Lw_log = np.log(Lw + 0.00001).astype(np.float32)
 
         kernel_size = int(self.sigma_s * 4)
         if kernel_size % 2 == 0:
@@ -264,3 +264,54 @@ class ToneMapDurand(ToneMap):
     
     def intensity_gaussian(self, d):
         return np.exp((-(d * d)) / (2 * ((self.sigma_r) ** 2)))
+    
+class ToneMapFattal(ToneMap):
+    def __init__(
+            self, 
+            luminance_coefs = np.array([1/61, 40/61, 20/61]),
+            gamma = None,
+            base_contrast = 4,
+            limit_runtime = "Yes"):
+        super().__init__(luminance_coefs, gamma)
+        self.sigma_s = None
+        self.sigma_r = 0.4
+        if base_contrast == None:
+            base_contrast = 4
+        self.base_contrast = base_contrast
+        if limit_runtime != "No":
+            limit_runtime = True
+        else:
+            limit_runtime = False
+        self.limit_runtime = limit_runtime
+
+    def process(self, im):
+        self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
+        im_d = im.copy()
+
+        Lw = self.compute_world_luminance(im)
+        H = np.log(Lw + 0.00001).astype(np.float32)
+
+
+        Ld = np.exp(Ld_log)
+        
+        # convert luminance back to RGB
+        Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
+        Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
+        im_d = Ld_3 * (im / Lw_3)
+
+        # apply gamma correction before returning if provided with gamma value
+        if self.gamma == None:
+            return im_d
+        else:
+            im_d_gamma_corrected = ((im_d) ** (1 / self.gamma))
+            return im_d_gamma_corrected
+        
+    def compute_gaussian_kernel(self, sigma, s):
+        kernel = np.zeros((s,s))
+        for i in range(s):
+            for j in range(s):
+                x = i - (s // 2)
+                y = j - (s // 2)
+                kernel[i][j] = np.exp((-(x * x + y * y)) / (2 * ((sigma) ** 2)))
+        # kernel /= np.sum(kernel)
+        return kernel
