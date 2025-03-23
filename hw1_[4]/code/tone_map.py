@@ -283,8 +283,26 @@ class ToneMapFattal(ToneMap):
         Lw = self.compute_world_luminance(im)
         H = np.log(Lw + 0.00001).astype(np.float32)
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
-        grad_H_x, grad_H_y = self.compute_gradient_pyramid(gaussian_pyramid)
-        Phi = self.calculate_Phi(grad_H_x, grad_H_y)
+        grad_H_x_k, grad_H_y_k = self.compute_gradient_pyramid(gaussian_pyramid)
+        Phi = self.calculate_Phi(grad_H_x_k, grad_H_y_k)
+
+        gradx_kernel = np.array([[0,0,0],
+                                 [0,-1,1],
+                                 [0,0,0]])
+        grady_kernel = np.array([[0,0,0],
+                                 [0,-1,0],
+                                 [0,1,0]])
+        divx_kernel = np.array([[0,0,0],
+                                [-1,1,0],
+                                [0,0,0]])
+        divy_kernel = np.array([[0,-1,0],
+                                [0,1,0],
+                                [0,0,0]])
+        grad_H_x = cv2.filter2D(H, -1, gradx_kernel)
+        grad_H_y = cv2.filter2D(H, -1, grady_kernel)
+        G_x = grad_H_x * Phi
+        G_y = grad_H_y * Phi
+        div_G = cv2.filter2D(G_x, -1, divx_kernel) + cv2.filter2D(G_y, -1, divy_kernel)
         exit()
         Ld = np.exp(Ld_log)
         
