@@ -284,7 +284,7 @@ class ToneMapFattal(ToneMap):
         H = np.log(Lw + 0.00001).astype(np.float32)
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
         grad_H_x, grad_H_y = self.compute_gradient_pyramid(gaussian_pyramid)
-        
+        Phi = self.calculate_Phi(grad_H_x, grad_H_y)
         exit()
         Ld = np.exp(Ld_log)
         
@@ -331,3 +331,33 @@ class ToneMapFattal(ToneMap):
             grady_pyramid.append(cv2.filter2D(H, -1, grady_kernel / (2 ** (k + 1))))
 
         return gradx_pyramid, grady_pyramid
+    
+    def calculate_Phi(self, grad_H_x, grad_H_y):
+        d = len(grad_H_y) - 1
+        mag_grad_H_d = np.sqrt(grad_H_x[d] * grad_H_x[d] + grad_H_y[d] * grad_H_y[d])
+        alpha = 0.1 * np.average(mag_grad_H_d)
+        
+        print("**invalid case handled when using np.where, so it is safe to ignore the following warnings regarding division by zero and invalid value**")
+        cur_Phi = np.where(
+            mag_grad_H_d == 0,
+            0,
+            (alpha / mag_grad_H_d) * ((mag_grad_H_d / alpha) ** self.beta)
+        )
+        # print(f"d: {d}")
+        for k in range(d - 1, -1, -1):
+            mag_grad_H_k = np.sqrt(grad_H_x[k] * grad_H_x[k] + grad_H_y[k] * grad_H_y[k])
+            alpha = 0.1 * np.average(mag_grad_H_k)
+            # print("**invalid case handled when using np.where, so it is safe to ignore the two following warnings**")
+            phi_k = np.where(
+                mag_grad_H_k == 0,
+                0,
+                (alpha / mag_grad_H_k) * ((mag_grad_H_k / alpha) ** self.beta)
+            )
+            height = mag_grad_H_k.shape[0]
+            width = mag_grad_H_k.shape[1]
+            L_Phi_k_plus_one = cv2.resize(cur_Phi, (width,height), cv2.INTER_LINEAR)
+            cur_Phi = L_Phi_k_plus_one * phi_k
+            # print(cur_Phi.shape)
+            # print(k)
+        
+        return cur_Phi
