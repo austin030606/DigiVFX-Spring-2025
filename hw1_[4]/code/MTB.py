@@ -64,7 +64,7 @@ def construct_pyramid(im, number_of_levels):
     height = im.shape[0] // 2
     width = im.shape[1] // 2
     for i in range(number_of_levels):
-        if (height <= 1 or width <= 1):
+        if (height <= 32 or width <= 32):
             break
         cur_im = cv2.resize(im, (width,height))
         res.append(cur_im)
