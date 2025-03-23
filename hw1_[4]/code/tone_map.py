@@ -270,19 +270,11 @@ class ToneMapFattal(ToneMap):
             self, 
             luminance_coefs = np.array([1/61, 40/61, 20/61]),
             gamma = None,
-            base_contrast = 4,
-            limit_runtime = "Yes"):
+            beta = 0.8):
         super().__init__(luminance_coefs, gamma)
-        self.sigma_s = None
-        self.sigma_r = 0.4
-        if base_contrast == None:
-            base_contrast = 4
-        self.base_contrast = base_contrast
-        if limit_runtime != "No":
-            limit_runtime = True
-        else:
-            limit_runtime = False
-        self.limit_runtime = limit_runtime
+        if beta == None:
+            beta = 0.8
+        self.beta = beta
 
     def process(self, im):
         self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
@@ -291,8 +283,8 @@ class ToneMapFattal(ToneMap):
         Lw = self.compute_world_luminance(im)
         H = np.log(Lw + 0.00001).astype(np.float32)
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
-        for h in gaussian_pyramid:
-            print(h.shape)
+        grad_H_x, grad_H_y = self.compute_gradient_pyramid(gaussian_pyramid)
+        
         exit()
         Ld = np.exp(Ld_log)
         
@@ -323,3 +315,19 @@ class ToneMapFattal(ToneMap):
             width //= 2
 
         return pyramid
+    
+    def compute_gradient_pyramid(self, pyramid):
+        gradx_kernel = np.array([[0,0,0],
+                                 [-1,0,1],
+                                 [0,0,0]])
+        grady_kernel = np.array([[0,-1,0],
+                                 [0,0,0],
+                                 [0,1,0]])
+        
+        gradx_pyramid = []
+        grady_pyramid = []
+        for k, H in enumerate(pyramid):
+            gradx_pyramid.append(cv2.filter2D(H, -1, gradx_kernel / (2 ** (k + 1))))
+            grady_pyramid.append(cv2.filter2D(H, -1, grady_kernel / (2 ** (k + 1))))
+
+        return gradx_pyramid, grady_pyramid
