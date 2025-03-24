@@ -2,8 +2,9 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 import gc
-from scipy.sparse import csr_matrix 
-from scipy.sparse.linalg import cg, spsolve
+from scipy.sparse import csr_matrix, diags, eye
+from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator
+import pyamg
 
 def gamma_correction(im, gamma):
     # suppose im is correct im_d hdr image
@@ -274,23 +275,28 @@ class ToneMapFattal(ToneMap):
             self, 
             luminance_coefs = np.array([1/61, 40/61, 20/61]),
             gamma = None,
-            beta = 0.8):
+            beta = 0.8,
+            maxiter = 10000):
         super().__init__(luminance_coefs, gamma)
         if beta == None:
             beta = 0.8
         self.beta = beta
+        if maxiter == None:
+            maxiter = 10000
+        self.maxiter = maxiter
 
     def process(self, im):
         self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
         im_d = im.copy()
 
         Lw = self.compute_world_luminance(im)
-        H = np.log(Lw + 0.00001)
+        H = np.log((Lw) + 0.00001)
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
         grads_pyramid = self.compute_gradient_pyramid(gaussian_pyramid)
         grad_H_x_k = grads_pyramid[0]
         grad_H_y_k = grads_pyramid[1]
         Phi = self.calculate_Phi(grad_H_x_k, grad_H_y_k)
+
 
         grady_kernel = np.array([[0,0,0],
                                  [0,-1,1],
@@ -314,128 +320,112 @@ class ToneMapFattal(ToneMap):
         # print(cv2.filter2D(G_x, -1, divx_kernel, borderType=cv2.BORDER_REPLICATE)[0])
         # print(grad_H_x[-1])
         # print(Phi.min(), Phi.max())
-        cv2.imshow("Phi", Phi)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        exit()
+        # cv2.imshow("Phi", Phi)
+        # # cv2.imshow("Div G", div_G)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        # exit()
         
 
         # solve the poison equation
         row = []
         col = []
         val = []
-        cnt = 0
-        b = []
         height = im.shape[0]
         width = im.shape[1]
         # poisson equation
         for x in range(height):
             for y in range(width):
-                if x == 1 and y == 1 and False:
-                    row.append(cnt)
-                    col.append(x * width + y)
+                minus_cnt = 0
+                # if x == 0 and y == 0:
+                #     row.append(0)
+                #     col.append(0)
+                #     val.append(1.0)
+                #     continue
+                
+                if x + 1 < height:
+                    row.append(x * width + y)
+                    col.append((x + 1) * width + y)
+                    val.append(1.0)
+                    minus_cnt += 1
+                else:
+                    row.append(x * width + y)
+                    col.append((x) * width + y)
                     val.append(1.0)
 
-                    b.append(-0.2122981525)
-
-                    cnt += 1
+                if x - 1 >= 0:
+                    row.append(x * width + y)
+                    col.append((x - 1) * width + y)
+                    val.append(1.0)
+                    minus_cnt += 1
                 else:
-                    minus_cnt = 0
-                    if x + 1 < height:
-                        row.append(cnt)
-                        col.append((x + 1) * width + y)
-                        val.append(1.0)
-                        minus_cnt += 1.0
-                    # else:
-                    #     # Reflect at right boundary
-                    #     row.append(cnt)
-                    #     col.append(x * width + y)
-                    #     val.append(1.0)
+                    row.append(x * width + y)
+                    col.append((x) * width + y)
+                    val.append(1.0)
 
-                    if x - 1 >= 0:
-                        row.append(cnt)
-                        col.append((x - 1) * width + y)
-                        val.append(1.0)
-                        minus_cnt += 1.0
-                    # else:
-                    #     row.append(cnt)
-                    #     col.append(x * width + y)
-                    #     val.append(1.0)
+                if y + 1 < width:
+                    row.append(x * width + y)
+                    col.append(x * width + (y + 1))
+                    val.append(1.0)
+                    minus_cnt += 1
+                else:
+                    row.append(x * width + y)
+                    col.append(x * width + (y))
+                    val.append(1.0)
 
-                    if y + 1 < width:
-                        row.append(cnt)
-                        col.append(x * width + (y + 1))
-                        val.append(1.0)
-                        minus_cnt += 1.0
-                    # else:
-                    #     row.append(cnt)
-                    #     col.append(x * width + (y))
-                    #     val.append(1.0)
+                if y - 1 >= 0:
+                    row.append(x * width + y)
+                    col.append(x * width + (y - 1))
+                    val.append(1.0)
+                    minus_cnt += 1
+                else:
+                    row.append(x * width + y)
+                    col.append(x * width + (y))
+                    val.append(1.0)
 
-                    if y - 1 >= 0:
-                        row.append(cnt)
-                        col.append(x * width + (y - 1))
-                        val.append(1.0)
-                        minus_cnt += 1.0
-                    # else:
-                    #     row.append(cnt)
-                    #     col.append(x * width + (y))
-                    #     val.append(1.0)
-
-                    row.append(cnt)
-                    col.append(x * width + y)
-                    val.append(-4)
-                    # val.append(-1 * minus_cnt)
-
-                    b.append(div_G[x][y])
-
-                    cnt += 1
+                row.append(x * width + y)
+                col.append(x * width + y)
+                # val.append(-4)
+                val.append(-1 * minus_cnt)
 
 
-        A = csr_matrix((val, (row, col)), shape = (cnt, height * width)) 
-        b = np.array(b)
-        # A = pyamg.gallery.poisson((height * width,height * width), format='csr')
-        # b = div_G.flatten()
-        I_vec = spsolve(A, b)
-        # I_vec, exit_code = cg(A, b)
+        A = csr_matrix((val, (row, col)), shape = (height * width, height * width))
+        b = div_G.flatten()
+        # print("start")
+        # I_vec = spsolve(A, b)
+        I_vec, exit_code = cg(A, b, maxiter=self.maxiter)
         # print(f"exit code: {exit_code}")
-        Ld_log = np.zeros((im.shape[0], im.shape[1]))
-        for x in range(height):
-            for y in range(width):
-            #    x = i + 1
-            #    y = j + 1
-               Ld_log[x][y] = I_vec[x * width + y]
-        # Ld_log = ((Ld_log - Ld_log.min()) / (Ld_log.max() - Ld_log.min()))
+        print(f"residual: {np.sqrt((A * I_vec - b).dot((A * I_vec - b)))}")
+        # ml = pyamg.ruge_stuben_solver(A)   
+        # I_vec = ml.solve(b, tol=1e-10)
+        # print(f"finish")
+        Ld_log = I_vec.reshape((height, width))
+        Ld = np.exp(Ld_log * self.gamma)
+        # Ld -= Ld.min()
+        black = 0.0005;
+        white = 0.991;
+        Ld_min = np.quantile(Ld, black)
+        Ld_max = np.quantile(Ld, white)
+        print(Ld.min(), Ld.max())
+        print(Ld_min, Ld_max)
+        Ld = np.clip(Ld, Ld_min, Ld_max)
+        Ld = (Ld - Ld_min) / (Ld_max-Ld_min)
+        # Ld = (Ld - Ld.min()) / ((Ld.max()) - Ld.min())
+        # print(Ld_log.min(), Ld_log.max())
+        # print(Ld.min(), Ld.max())
+        # cv2.imshow("I log", (Ld_log - Ld_log.min()))# / (Ld_log.max()-Ld_log.min()))
+        # # print(H.min(), H.max())
+        # # cv2.imshow("H", (H - H.min())/(H.max() -H.min()))
+        # cv2.imshow("I", (Ld - Ld.min()))#/(Ld.max() - Ld.min()))
+        # # cv2.imshow("I", np.clip(Ld, 0.0001, Ld.max()))
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
         # exit()
-        Ld = np.exp(Ld_log * 0.8)
-        # Ld = (Ld_log + 0.5)
-        Ld -= Ld.min()
-        # Ld = (Ld - Ld.min()) / (Ld.max()-Ld.min())
-        # cut_min = 0.01 * 0.1;
-        # cut_max = 1.0 - 0.01 * 0.5;
-        # Ld_min = np.quantile(Ld, cut_min)
-        # Ld_max = np.quantile(Ld, cut_max)
-        # print(cut_min, cut_max)
-        # print(Ld_min, Ld_max)
-        # Ld = (Ld - Ld_min) / (Ld_max-Ld_min)
-        # Ld = np.clip(Ld, 0.0001, Ld.max())
-        print(Ld_log.min(), Ld_log.max())
-        print(Ld.min(), Ld.max())
-        cv2.imshow("I log", (Ld_log - Ld_log.min()))# / (Ld_log.max()-Ld_log.min()))
-        # print(H.min(), H.max())
-        # cv2.imshow("H", (H - H.min())/(H.max() -H.min()))
-        cv2.imshow("I", (Ld - Ld.min()))#/(Ld.max() - Ld.min()))
-        # cv2.imshow("I", np.clip(Ld, 0.0001, Ld.max()))
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        exit()
         
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
-        im_d = Ld_3 * ((im / Lw_3) ** 0.7)
+        im_d = Ld_3 * ((im / Lw_3))
 
         # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
