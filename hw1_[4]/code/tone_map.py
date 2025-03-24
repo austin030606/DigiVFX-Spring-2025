@@ -148,6 +148,7 @@ class ToneMapReinhard(ToneMap):
             raise NotImplementedError()
 
         # convert luminance back to RGB
+        print(Ld.min(), Ld.max())
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
         im_d = Ld_3 * (im / Lw_3)
@@ -284,11 +285,12 @@ class ToneMapFattal(ToneMap):
         im_d = im.copy()
 
         Lw = self.compute_world_luminance(im)
-        H = np.log(Lw + 0.00001).astype(np.float32)
+        H = np.log(Lw + 0.00001)
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
-        grad_H_x_k, grad_H_y_k = self.compute_gradient_pyramid(gaussian_pyramid)
+        grads_pyramid = self.compute_gradient_pyramid(gaussian_pyramid)
+        grad_H_x_k = grads_pyramid[0]
+        grad_H_y_k = grads_pyramid[1]
         Phi = self.calculate_Phi(grad_H_x_k, grad_H_y_k)
-        # exit()
 
         grady_kernel = np.array([[0,0,0],
                                  [0,-1,1],
@@ -311,7 +313,8 @@ class ToneMapFattal(ToneMap):
         div_G = cv2.filter2D(G_x, -1, divx_kernel, borderType=cv2.BORDER_REPLICATE) + cv2.filter2D(G_y, -1, divy_kernel, borderType=cv2.BORDER_REPLICATE)
         # print(cv2.filter2D(G_x, -1, divx_kernel, borderType=cv2.BORDER_REPLICATE)[0])
         # print(grad_H_x[-1])
-        cv2.imshow("I", ((Phi - Phi.min()) / (Phi.max() - Phi.min())))
+        # print(Phi.min(), Phi.max())
+        cv2.imshow("Phi", Phi)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
         exit()
@@ -328,55 +331,61 @@ class ToneMapFattal(ToneMap):
         # poisson equation
         for x in range(height):
             for y in range(width):
-                if x == 0 and y == 0 and False:
+                if x == 1 and y == 1 and False:
                     row.append(cnt)
                     col.append(x * width + y)
                     val.append(1.0)
 
-                    b.append(-4.9115515)
+                    b.append(-0.2122981525)
 
                     cnt += 1
                 else:
+                    minus_cnt = 0
                     if x + 1 < height:
                         row.append(cnt)
                         col.append((x + 1) * width + y)
                         val.append(1.0)
-                    else:
-                        # Reflect at right boundary
-                        row.append(cnt)
-                        col.append(x * width + y)
-                        val.append(1.0)
+                        minus_cnt += 1.0
+                    # else:
+                    #     # Reflect at right boundary
+                    #     row.append(cnt)
+                    #     col.append(x * width + y)
+                    #     val.append(1.0)
 
                     if x - 1 >= 0:
                         row.append(cnt)
                         col.append((x - 1) * width + y)
                         val.append(1.0)
-                    else:
-                        row.append(cnt)
-                        col.append(x * width + y)
-                        val.append(1.0)
+                        minus_cnt += 1.0
+                    # else:
+                    #     row.append(cnt)
+                    #     col.append(x * width + y)
+                    #     val.append(1.0)
 
                     if y + 1 < width:
                         row.append(cnt)
                         col.append(x * width + (y + 1))
                         val.append(1.0)
-                    else:
-                        row.append(cnt)
-                        col.append(x * width + (y))
-                        val.append(1.0)
+                        minus_cnt += 1.0
+                    # else:
+                    #     row.append(cnt)
+                    #     col.append(x * width + (y))
+                    #     val.append(1.0)
 
                     if y - 1 >= 0:
                         row.append(cnt)
                         col.append(x * width + (y - 1))
                         val.append(1.0)
-                    else:
-                        row.append(cnt)
-                        col.append(x * width + (y))
-                        val.append(1.0)
+                        minus_cnt += 1.0
+                    # else:
+                    #     row.append(cnt)
+                    #     col.append(x * width + (y))
+                    #     val.append(1.0)
 
                     row.append(cnt)
                     col.append(x * width + y)
-                    val.append(-4.0)
+                    val.append(-4)
+                    # val.append(-1 * minus_cnt)
 
                     b.append(div_G[x][y])
 
@@ -385,6 +394,8 @@ class ToneMapFattal(ToneMap):
 
         A = csr_matrix((val, (row, col)), shape = (cnt, height * width)) 
         b = np.array(b)
+        # A = pyamg.gallery.poisson((height * width,height * width), format='csr')
+        # b = div_G.flatten()
         I_vec = spsolve(A, b)
         # I_vec, exit_code = cg(A, b)
         # print(f"exit code: {exit_code}")
@@ -394,20 +405,37 @@ class ToneMapFattal(ToneMap):
             #    x = i + 1
             #    y = j + 1
                Ld_log[x][y] = I_vec[x * width + y]
-        Ld_log = ((Ld_log - Ld_log.min()) / (Ld_log.max() - Ld_log.min()))
+        # Ld_log = ((Ld_log - Ld_log.min()) / (Ld_log.max() - Ld_log.min()))
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        # exit()
+        Ld = np.exp(Ld_log * 0.8)
+        # Ld = (Ld_log + 0.5)
+        Ld -= Ld.min()
+        # Ld = (Ld - Ld.min()) / (Ld.max()-Ld.min())
+        # cut_min = 0.01 * 0.1;
+        # cut_max = 1.0 - 0.01 * 0.5;
+        # Ld_min = np.quantile(Ld, cut_min)
+        # Ld_max = np.quantile(Ld, cut_max)
+        # print(cut_min, cut_max)
+        # print(Ld_min, Ld_max)
+        # Ld = (Ld - Ld_min) / (Ld_max-Ld_min)
+        # Ld = np.clip(Ld, 0.0001, Ld.max())
         print(Ld_log.min(), Ld_log.max())
-        cv2.imshow("I", ((Ld_log - Ld_log.min()) / (Ld_log.max() - Ld_log.min())))
+        print(Ld.min(), Ld.max())
+        cv2.imshow("I log", (Ld_log - Ld_log.min()))# / (Ld_log.max()-Ld_log.min()))
+        # print(H.min(), H.max())
+        # cv2.imshow("H", (H - H.min())/(H.max() -H.min()))
+        cv2.imshow("I", (Ld - Ld.min()))#/(Ld.max() - Ld.min()))
+        # cv2.imshow("I", np.clip(Ld, 0.0001, Ld.max()))
         cv2.waitKey(0)
         cv2.destroyAllWindows()
         exit()
-        print(Ld_log.min(), Ld_log.max())
-        Ld = np.exp(Ld_log)
-        print(Ld.min(), Ld.max())
         
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
-        im_d = Ld_3 * (im / Lw_3)
+        im_d = Ld_3 * ((im / Lw_3) ** 0.7)
 
         # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
@@ -423,10 +451,11 @@ class ToneMapFattal(ToneMap):
         pyramid = [H.copy()]
         height = H.shape[0] // 2
         width = H.shape[1] // 2
+        cur_H = cv2.filter2D(pyramid[-1], -1, gaussian_kernel, borderType=cv2.BORDER_REPLICATE)
         while height >= 32 and width >= 32:
-            cur_H = cv2.resize(H, (width,height), cv2.INTER_AREA)
-            cur_H = cv2.filter2D(cur_H, -1, gaussian_kernel)
+            cur_H = cv2.resize(cur_H, (width,height), cv2.INTER_AREA)
             pyramid.append(cur_H)
+            cur_H = cv2.filter2D(cur_H, -1, gaussian_kernel, borderType=cv2.BORDER_REPLICATE)
             height //= 2
             width //= 2
 
@@ -444,40 +473,45 @@ class ToneMapFattal(ToneMap):
         grady_pyramid = []
         for k, H in enumerate(pyramid):
             # if k == len(pyramid) - 1:
-            #     print(cv2.filter2D(H, -1, gradx_kernel / (2 ** (k + 1)), borderType=cv2.BORDER_REPLICATE)[0:3,0:3])
             #     print(H[0:3,0:3])
-            #     print(k)
-            gradx_pyramid.append(cv2.filter2D(H, -1, gradx_kernel / (2 ** (k + 1)), borderType=cv2.BORDER_REPLICATE))
-            grady_pyramid.append(cv2.filter2D(H, -1, grady_kernel / (2 ** (k + 1)), borderType=cv2.BORDER_REPLICATE))
+            #     print((cv2.filter2D(H, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE) / (2 ** (k + 1)))[0:3,0:3])
+            #     print(k, (2 ** (k + 1)))
+            gradx_pyramid.append(cv2.filter2D(H, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE) / (2 ** (k + 1)))
+            grady_pyramid.append(cv2.filter2D(H, -1, grady_kernel, borderType=cv2.BORDER_REPLICATE) / (2 ** (k + 1)))
 
-        return gradx_pyramid, grady_pyramid
+        return [gradx_pyramid, grady_pyramid]
     
     def calculate_Phi(self, grad_H_x, grad_H_y):
-        d = len(grad_H_y) - 1
-        mag_grad_H_d = np.sqrt(grad_H_x[d] * grad_H_x[d] + grad_H_y[d] * grad_H_y[d])
-        alpha = 0.1 * np.average(mag_grad_H_d)
+        # alpha = 0.1 * np.average(mag_grad_H_d)
+        average = 0
+        total_pixel_cnt = 0
+        for k in range(len(grad_H_x)):
+            average += np.sum(np.sqrt(grad_H_x[k] * grad_H_x[k] + grad_H_y[k] * grad_H_y[k]))
+            total_pixel_cnt += grad_H_x[k].shape[0] * grad_H_x[k].shape[1]
+        average /= total_pixel_cnt
+        # alpha = 0.1 * np.average(np.sqrt(grad_H_x[0] * grad_H_x[0] + grad_H_y[0] * grad_H_y[0]))
+        alpha = 0.1 * average
+        mag_grad_H_d = np.sqrt(grad_H_x[-1] * grad_H_x[-1] + grad_H_y[-1] * grad_H_y[-1])
         
-        print("**invalid case handled when using np.where, so it is safe to ignore the following warnings regarding division by zero and invalid value**")
-        cur_Phi = np.where(
-            mag_grad_H_d == 0,
-            0,
-            (alpha / mag_grad_H_d) * ((mag_grad_H_d / alpha) ** self.beta)
-        )
+        cur_Phi = (((mag_grad_H_d + 1e-5) / alpha) ** (self.beta - 1))
+        # cv2.imshow(f"Phi {len(grad_H_x) - 1}", cur_Phi)
         # print(f"d: {d}")
-        for k in range(d - 1, -1, -1):
+        for k in range(len(grad_H_x) - 2, -1, -1):
             mag_grad_H_k = np.sqrt(grad_H_x[k] * grad_H_x[k] + grad_H_y[k] * grad_H_y[k])
-            alpha = 0.1 * np.average(mag_grad_H_k)
-            # print("**invalid case handled when using np.where, so it is safe to ignore the two following warnings**")
-            phi_k = np.where(
-                mag_grad_H_k == 0,
-                0,
-                (alpha / mag_grad_H_k) * ((mag_grad_H_k / alpha) ** self.beta)
-            )
+            # alpha = 0.1 * np.average(mag_grad_H_k)
+            phi_k = (((mag_grad_H_k + 1e-5) / alpha) ** (self.beta - 1))
             height = mag_grad_H_k.shape[0]
             width = mag_grad_H_k.shape[1]
             L_Phi_k_plus_one = cv2.resize(cur_Phi, (width,height), cv2.INTER_LINEAR)
             cur_Phi = L_Phi_k_plus_one * phi_k
+            # cv2.imshow(f"Phi {k} + 1", L_Phi_k_plus_one)
+            # cv2.imshow(f"phi {k}", phi_k)
+            # cv2.imshow(f"Phi {k}", cur_Phi)
+            # print(f"cur Phi min max: {cur_Phi.min()} {cur_Phi.max()}")
+            # print(f"cur Phi median: {np.median(cur_Phi)}")
             # print(cur_Phi.shape)
             # print(k)
-        
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        # exit()
         return cur_Phi
