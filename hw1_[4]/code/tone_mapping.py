@@ -58,6 +58,16 @@ if __name__ == "__main__":
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Durand_corrected_8bit)
     elif opt.tone_map == "Fattal":
         tonemap = ToneMapFattal(gamma=opt.gamma, beta=opt.beta, maxiter=opt.maxiter)
+
+        if hdr_im.shape[0] > hdr_im.shape[1]:
+            if hdr_im.shape[0] > 2560:
+                scale = 2000 / hdr_im.shape[0]
+                hdr_im = cv2.resize(hdr_im, (0, 0), cv2.INTER_LINEAR, scale, scale)
+        else:
+            if hdr_im.shape[1] > 2560:
+                scale = 2000 / hdr_im.shape[1]
+                hdr_im = cv2.resize(hdr_im, (0, 0), cv2.INTER_LINEAR, scale, scale)
+        # hdr_im = hdr_im[:,:-80]
         res_Fattal = tonemap.process(hdr_im.copy())
 
         if opt.gamma == None:
