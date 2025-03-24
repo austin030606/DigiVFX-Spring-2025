@@ -14,7 +14,11 @@ import numpy as np
 #     [1, 0, dx],
 #     [0, 1, dy]
 # ])
-def MTB(images, max_offset = 500):
+
+# if use_exclusion_bitmaps is True and eb_threshold is 0
+# the pixels with exactly the median value will not be considered
+# to consider all pixels, set use_exclusion_bitmaps to False
+def MTB(images, max_offset = 500, use_exclusion_bitmaps = True, eb_threshold = 4):
     pyramid_level = np.log2(max_offset).astype(np.uint)
     ref_im = images[0]
     ref_im_pyramid = construct_pyramid(ref_im, pyramid_level)
@@ -23,7 +27,7 @@ def MTB(images, max_offset = 500):
     for i in range(1, len(images)):
         cur_im = images[i]
         cur_im_pyramid = construct_pyramid(cur_im, pyramid_level)
-        offset = calculate_offset(ref_im_pyramid, cur_im_pyramid)
+        offset = calculate_offset(ref_im_pyramid, cur_im_pyramid, use_exclusion_bitmaps, eb_threshold)
         offsets.append(offset)
 
         # M = np.float32([
@@ -73,7 +77,7 @@ def construct_pyramid(im, number_of_levels):
 
     return res
 
-def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True):
+def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True, eb_threshold = 4):
     cur_dx = 0
     cur_dy = 0
 
@@ -87,9 +91,13 @@ def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True):
         min_diff_dy = cur_dy
 
         cur_ref_bin = binarize_using_median(cur_ref)
-        cur_ref_eb = compute_exclusion_bitmap(cur_ref)
+        cur_ref_eb = compute_exclusion_bitmap(cur_ref, eb_threshold)
         cur_im_bin = binarize_using_median(cur_im)
-        cur_im_eb = compute_exclusion_bitmap(cur_im)
+        cur_im_eb = compute_exclusion_bitmap(cur_im, eb_threshold)
+        # cv2.imshow("ref pass", (cur_ref_bin & cur_ref_eb) * 250)
+        # cv2.imshow("cur pass", (cur_im_bin & cur_im_eb) * 250)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
         for dx in range(-1, 2):
             for dy in range(-1, 2):
                 M = np.float32([
@@ -107,6 +115,9 @@ def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True):
                 else:
                     shifted_cur_im_bin = cv2.warpAffine(cur_im_bin, M, (cur_im_bin.shape[1], cur_im_bin.shape[0]))
                     bin_diff = cur_ref_bin ^ shifted_cur_im_bin
+                    # cv2.imshow("ref pass", (bin_diff) * 250)
+                    # cv2.waitKey(0)
+                    # cv2.destroyAllWindows()
                 diff = np.sum(bin_diff)
                 if diff < min_diff:
                     min_diff = diff
@@ -122,17 +133,17 @@ def calculate_offset(ref_pyramid, im_pyramid, use_exclusion_bitmaps = True):
 
 if __name__ == "__main__":
     ROOT = os.path.abspath(".") + "/"
-    filename1 = ROOT + "../data/DSCF3951.tif"
-    filename2 = ROOT + "../data/DSCF3953.tif"
-    filename3 = ROOT + "../data/DSCF3955.tif"
-    filename4 = ROOT + "../data/DSCF3956.tif"
-    filename5 = ROOT + "../data/DSCF3957.tif"
+    filename1 = ROOT + "../data/StLouisArchMultExpEV-1.82.JPG"
+    filename2 = ROOT + "../data/StLouisArchMultExpEV-4.72.JPG"
+    filename3 = ROOT + "../data/StLouisArchMultExpEV+1.51.JPG"
+    filename4 = ROOT + "../data/StLouisArchMultExpEV+4.09.JPG"
+    # filename5 = ROOT + "../data/DSCF3957.tif"
 
     im_1 = cv2.imread(filename1)
     im_2 = cv2.imread(filename2)
     im_3 = cv2.imread(filename3)
     im_4 = cv2.imread(filename4)
-    im_5 = cv2.imread(filename5)
+    # im_5 = cv2.imread(filename5)
 
     blue, green, red = cv2.split(im_1)
     im_grey_1 = ((54.0 * red + 183.0 * green + 19.0 * blue) / 256.0).astype(np.uint8)
@@ -142,15 +153,16 @@ if __name__ == "__main__":
     im_grey_3 = ((54.0 * red + 183.0 * green + 19.0 * blue) / 256.0).astype(np.uint8)
     blue, green, red = cv2.split(im_4)
     im_grey_4 = ((54.0 * red + 183.0 * green + 19.0 * blue) / 256.0).astype(np.uint8)
-    blue, green, red = cv2.split(im_5)
-    im_grey_5 = ((54.0 * red + 183.0 * green + 19.0 * blue) / 256.0).astype(np.uint8)
+    # blue, green, red = cv2.split(im_5)
+    # im_grey_5 = ((54.0 * red + 183.0 * green + 19.0 * blue) / 256.0).astype(np.uint8)
 
     # M = np.float32([
     #     [1.25, 0, 0],
     #     [0, 1.25, 0]
     # ])
     # im_grey_2 = cv2.warpAffine(im_grey_2, M, (im_grey_2.shape[1], im_grey_2.shape[0]))
-    offsets = MTB([im_grey_1, im_grey_2, im_grey_3, im_grey_4, im_grey_5], max(im_grey_2.shape[0], im_grey_2.shape[1]) // 5)
+    offsets = MTB([im_grey_1, im_grey_2, im_grey_3, im_grey_4], max(im_grey_2.shape[0], im_grey_2.shape[1]) // 5, use_exclusion_bitmaps=True, eb_threshold=0)
+    # offsets = MTB([im_grey_1, im_grey_2], 50)
     print(offsets)
     # cv2.imwrite(filename[:-4] + ".jpg", im_grey)
     # print(np.min(im), np.max(im))
