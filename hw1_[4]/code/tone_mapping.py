@@ -19,6 +19,7 @@ def parse_opt():
     parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
     parser.add_argument("--beta", type=float, default=0.8, help="beta value for Fattal's method")
     parser.add_argument("--maxiter", type=int, default=10000, help="max iteration for solving the poisson equation in Fattal's method")
+    parser.add_argument("--saturation", type=float, default=1.1, help="saturation value for Fattal's method")
     opt = parser.parse_args()
     return opt
 

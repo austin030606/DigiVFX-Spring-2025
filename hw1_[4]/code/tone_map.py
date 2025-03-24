@@ -3,7 +3,7 @@ import cv2
 from matplotlib import pyplot as plt
 import gc
 from scipy.sparse import csr_matrix, diags, eye
-from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator
+from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator, lgmres
 import pyamg
 
 def gamma_correction(im, gamma):
@@ -276,7 +276,8 @@ class ToneMapFattal(ToneMap):
             luminance_coefs = np.array([1/61, 40/61, 20/61]),
             gamma = None,
             beta = 0.8,
-            maxiter = 10000):
+            maxiter = 10000,
+            saturation = 1.1):
         super().__init__(luminance_coefs, gamma)
         if beta == None:
             beta = 0.8
@@ -284,6 +285,9 @@ class ToneMapFattal(ToneMap):
         if maxiter == None:
             maxiter = 10000
         self.maxiter = maxiter
+        if saturation == None:
+            saturation = 1.1
+        self.saturation = saturation
 
     def process(self, im):
         self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
@@ -293,9 +297,14 @@ class ToneMapFattal(ToneMap):
         H = np.log((Lw) + 0.00001)
         gaussian_pyramid = self.compute_gaussian_pyramid(H)
         grads_pyramid = self.compute_gradient_pyramid(gaussian_pyramid)
+        del gaussian_pyramid
+        gc.collect()
         grad_H_x_k = grads_pyramid[0]
         grad_H_y_k = grads_pyramid[1]
         Phi = self.calculate_Phi(grad_H_x_k, grad_H_y_k)
+        del grad_H_x_k
+        del grad_H_y_k
+        gc.collect()
 
 
         grady_kernel = np.array([[0,0,0],
@@ -325,6 +334,12 @@ class ToneMapFattal(ToneMap):
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
         # exit()
+        del grad_H_x
+        del grad_H_y
+        del Phi
+        del G_x
+        del G_y
+        gc.collect()
         
 
         # solve the poison equation
@@ -348,66 +363,73 @@ class ToneMapFattal(ToneMap):
                     col.append((x + 1) * width + y)
                     val.append(1.0)
                     minus_cnt += 1
-                else:
-                    row.append(x * width + y)
-                    col.append((x) * width + y)
-                    val.append(1.0)
+                # else:
+                #     row.append(x * width + y)
+                #     col.append((x) * width + y)
+                #     val.append(1.0)
 
                 if x - 1 >= 0:
                     row.append(x * width + y)
                     col.append((x - 1) * width + y)
                     val.append(1.0)
                     minus_cnt += 1
-                else:
-                    row.append(x * width + y)
-                    col.append((x) * width + y)
-                    val.append(1.0)
+                # else:
+                #     row.append(x * width + y)
+                #     col.append((x) * width + y)
+                #     val.append(1.0)
 
                 if y + 1 < width:
                     row.append(x * width + y)
                     col.append(x * width + (y + 1))
                     val.append(1.0)
                     minus_cnt += 1
-                else:
-                    row.append(x * width + y)
-                    col.append(x * width + (y))
-                    val.append(1.0)
+                # else:
+                #     row.append(x * width + y)
+                #     col.append(x * width + (y))
+                #     val.append(1.0)
 
                 if y - 1 >= 0:
                     row.append(x * width + y)
                     col.append(x * width + (y - 1))
                     val.append(1.0)
                     minus_cnt += 1
-                else:
-                    row.append(x * width + y)
-                    col.append(x * width + (y))
-                    val.append(1.0)
+                # else:
+                #     row.append(x * width + y)
+                #     col.append(x * width + (y))
+                #     val.append(1.0)
 
                 row.append(x * width + y)
                 col.append(x * width + y)
-                # val.append(-4)
-                val.append(-1 * minus_cnt)
+                val.append(-4)
+                # val.append(-1 * minus_cnt)
 
 
         A = csr_matrix((val, (row, col)), shape = (height * width, height * width))
         b = div_G.flatten()
-        # print("start")
+        del row
+        del col
+        del val
+        gc.collect()
+        print("start")
         # I_vec = spsolve(A, b)
+        # def verbose_callback(residual):
+        #     print(f"residual: {np.sqrt((A * residual - b).dot((A * residual - b)))}", end='\r')
         I_vec, exit_code = cg(A, b, maxiter=self.maxiter)
+        # I_vec, exit_code = lgmres(A, b, maxiter=self.maxiter)
         # print(f"exit code: {exit_code}")
-        print(f"residual: {np.sqrt((A * I_vec - b).dot((A * I_vec - b)))}")
+        print(f"final residual: {np.sqrt((A * I_vec - b).dot((A * I_vec - b)))}")
         # ml = pyamg.ruge_stuben_solver(A)   
         # I_vec = ml.solve(b, tol=1e-10)
         # print(f"finish")
         Ld_log = I_vec.reshape((height, width))
-        Ld = np.exp(Ld_log * self.gamma)
+        Ld = np.exp(Ld_log)
         # Ld -= Ld.min()
-        black = 0.0005;
-        white = 0.991;
+        black = 0.001;
+        white = 0.993;
         Ld_min = np.quantile(Ld, black)
         Ld_max = np.quantile(Ld, white)
-        print(Ld.min(), Ld.max())
-        print(Ld_min, Ld_max)
+        # print(Ld.min(), Ld.max())
+        # print(Ld_min, Ld_max)
         Ld = np.clip(Ld, Ld_min, Ld_max)
         Ld = (Ld - Ld_min) / (Ld_max-Ld_min)
         # Ld = (Ld - Ld.min()) / ((Ld.max()) - Ld.min())
@@ -425,7 +447,7 @@ class ToneMapFattal(ToneMap):
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
-        im_d = Ld_3 * ((im / Lw_3))
+        im_d = Ld_3 * ((im / Lw_3) ** self.saturation)
 
         # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
