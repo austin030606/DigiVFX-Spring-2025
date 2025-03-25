@@ -91,7 +91,7 @@ def main():
     parser.add_argument(
         "--output", "-o", 
         type=str, 
-        default="../data/output/debevec/", 
+        default="../output/debevec/", 
         help="Path to output directory"
     )
     args = parser.parse_args()
@@ -105,14 +105,14 @@ def main():
     images, exposures = load_images_and_exposures_from_dir(data_path)
 
     # align images
-    offset = MTB_color(images)
-    images_align = align_images_rgb(images, offset)
+    # offset = MTB_color(images)
+    # images_align = align_images_rgb(images, offset)
     
     # Compute radiance map
-    radiance_map = compute_radiance_map_log(images_align, exposures)
+    radiance_map = compute_radiance_map_log(images, exposures)
 
     # Save tone mapped preview
-    tone_mapped = tone_map(radiance_map, exposure=5e-7)
+    tone_mapped = tone_map(radiance_map, exposure=1e-7)
     iio.imwrite(os.path.join(output_path, "tone_mapped.jpg"), tone_mapped)
 
     # Save normalized .hdr
