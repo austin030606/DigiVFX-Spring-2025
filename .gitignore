@@ -4,3 +4,5 @@
 *.RAF
 *.tiff
 *.hdr
+*.pyc
+*.png

@@ -45,31 +45,31 @@ def weight_function(z, z_min=0, z_max=65535):
 
 # %%
 def compute_radiance_map_log(images, exposure_times):
-    P, H, W, C = images.shape
+    P, H, W, C = images.shape  # Assume C = 3 (R, G, B)
     ln_radiance_map = np.zeros((H, W, C), dtype=np.float32)
     weight_sum = np.zeros((H, W, C), dtype=np.float32)
 
     ln_exposure_times = np.log(exposure_times)
 
-    for j in range(P):
-        Z = images[j]  
-        t_j = ln_exposure_times[j]
+    for c in range(C):  # Process each color channel separately
+        for j in range(P):
+            Z = images[j, :, :, c]  # Get image j, channel c
+            t_j = ln_exposure_times[j]
 
-        Z_safe = np.clip(Z, 1, None)
-        ln_Z = np.log(Z_safe)
-        weight = weight_function(Z_safe)
+            Z_safe = np.clip(Z, 1, None)
+            ln_Z = np.log(Z_safe)
+            weight = weight_function(Z_safe)
 
-        ln_E = ln_Z - t_j
+            ln_E = ln_Z - t_j
 
-        ln_radiance_map += weight * ln_E
-        weight_sum += weight
+            ln_radiance_map[:, :, c] += weight * ln_E
+            weight_sum[:, :, c] += weight
 
-    weight_sum[weight_sum == 0] = 1.0
+        # Avoid division by zero
+        weight_sum[:, :, c][weight_sum[:, :, c] == 0] = 1.0
+        ln_radiance_map[:, :, c] /= weight_sum[:, :, c]
 
-    ln_radiance_map /= weight_sum
     radiance_map = np.exp(ln_radiance_map)
-    
-
     return radiance_map
 
 def tone_map(hdr_image, gamma=2.2, exposure=1e-7):
@@ -78,6 +78,27 @@ def tone_map(hdr_image, gamma=2.2, exposure=1e-7):
     img_tm = img_tm ** (1 / gamma)
     return (img_tm * 255).astype(np.uint8)
 
+
+def run_debevec(input_path, output_path):
+    print("Running Debevec method")
+    images, exposures = load_images_and_exposures_from_dir(input_path)
+    # Compute radiance map
+    radiance_map = compute_radiance_map_log(images, exposures)
+    
+    os.makedirs(output_path, exist_ok=True)
+    # Save tone mapped preview
+    # tone_mapped = tone_map(radiance_map, exposure=1e-7)
+    # iio.imwrite(os.path.join(output_path, "tone_mapped.jpg"), tone_mapped)
+
+    # Save normalized .hdr
+    radiance_map /= radiance_map.max()
+    iio.imwrite(os.path.join(output_path, "output_debevec.hdr"), radiance_map.astype(np.float32))
+    
+    # for debugging
+    tone_mapped = tone_map(radiance_map, exposure=1e-7)
+    iio.imwrite(os.path.join(output_path, "tone_mapped_preview.jpg"), tone_mapped)
+    
+    print(f"Saved HDR image to {output_path}")
 
 
 def main():
@@ -117,7 +138,7 @@ def main():
 
     # Save normalized .hdr
     radiance_map /= radiance_map.max()
-    iio.imwrite(os.path.join(output_path, "output.hdr"), radiance_map.astype(np.float32))
+    iio.imwrite(os.path.join(output_path, "output_debevec.hdr"), radiance_map.astype(np.float32))
     # print(f"Saved HDR image and tone-mapped preview to {output_path}")
 
 if __name__ == "__main__":

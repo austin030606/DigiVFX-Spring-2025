@@ -1,0 +1,9 @@
+# Run HDR
+## Debevec
+python hdr.py 
+
+## Mitsunaga
+python hdr.py -i ../data/jpg/ -o ../output/mitsunaga/ -m mitsunaga
+
+## Robertson
+python hdr.py -i ../data/jpg/ -o ../output/robertson/ -m robertson
