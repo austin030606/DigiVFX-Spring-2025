@@ -6,6 +6,7 @@ import glob
 import rawpy
 import imageio.v3 as iio
 import argparse
+from MTB import MTB_color, align_images_rgb
 
 # %%
 # load ppm and exposure values using their name from a directory
@@ -90,7 +91,7 @@ def main():
     parser.add_argument(
         "--output", "-o", 
         type=str, 
-        default="../data/output/", 
+        default="../data/output/debevec/", 
         help="Path to output directory"
     )
     args = parser.parse_args()
@@ -103,8 +104,12 @@ def main():
     # Load images and exposures
     images, exposures = load_images_and_exposures_from_dir(data_path)
 
+    # align images
+    offset = MTB_color(images)
+    images_align = align_images_rgb(images, offset)
+    
     # Compute radiance map
-    radiance_map = compute_radiance_map_log(images, exposures)
+    radiance_map = compute_radiance_map_log(images_align, exposures)
 
     # Save tone mapped preview
     tone_mapped = tone_map(radiance_map, exposure=5e-7)

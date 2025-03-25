@@ -15,6 +15,39 @@ import numpy as np
 #     [0, 1, dy]
 # ])
 
+
+def align_images_rgb(images, offsets):
+    """
+    Apply affine shift to a list of full-color (H, W, 3) images using given offsets.
+    Assumes images[0] is reference and not shifted.
+    """
+    aligned = [images[0]]
+    for i, (dx, dy) in enumerate(offsets):
+        M = np.float32([[1, 0, dx], [0, 1, dy]])
+        shifted = cv2.warpAffine(images[i + 1], M, (images[i + 1].shape[1], images[i + 1].shape[0]))
+        aligned.append(shifted)
+    return np.stack(aligned)
+
+
+def MTB_color(color_images, max_offset=500):
+    """
+    MTB alignment for a list of full-color (H, W, 3) images.
+    Returns: list of (dx, dy) offsets for all images relative to the first one.
+    """
+    def rgb_to_gray(im):
+        # Weighted grayscale conversion, same as your code
+        b, g, r = cv2.split(im)
+        return ((54.0 * r + 183.0 * g + 19.0 * b) / 256.0).astype(np.uint8)
+
+    # Convert all RGB images to grayscale
+    gray_images = [rgb_to_gray(im) for im in color_images]
+
+    # Call the original MTB
+    return MTB(gray_images, max_offset=max_offset)
+
+
+
+
 # if use_exclusion_bitmaps is True and eb_threshold is 0
 # the pixels with exactly the median value will not be considered
 # to consider all pixels, set use_exclusion_bitmaps to False
