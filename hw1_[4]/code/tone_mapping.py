@@ -18,7 +18,7 @@ def parse_opt():
     parser.add_argument("--tone_map_type", type=str, default="local", help="tone map type for Reinhard's method")
     parser.add_argument("--key_value", type=float, default=0.18, help="key value for Reinhard's method")
     parser.add_argument("--phi", type=float, default=8.0, help="phi for Reinhard's local method")
-    parser.add_argument("--threshold", type=float, default=8.0, help="the threshold used for scale selection for Reinhard's local method")
+    parser.add_argument("--threshold", type=float, default=0.05, help="the threshold used for scale selection for Reinhard's local method")
     parser.add_argument("--scale", type=int, default=43, help="scale for Reinhard's local method")
     
     parser.add_argument("--base_contrast", type=float, default=None, help="base contrast for Durand's method")
