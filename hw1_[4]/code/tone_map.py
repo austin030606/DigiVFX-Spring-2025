@@ -248,7 +248,7 @@ class ToneMapDurand(ToneMap):
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
-        im_d = Ld_3 * (im / Lw_3)
+        im_d = Ld_3 * (im / (Lw_3 + 0.00001))
 
         # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
@@ -290,7 +290,6 @@ class ToneMapFattal(ToneMap):
         self.saturation = saturation
 
     def process(self, im):
-        self.sigma_s = 0.02 * max(im.shape[0], im.shape[1])
         im_d = im.copy()
 
         Lw = self.compute_world_luminance(im)
@@ -412,9 +411,14 @@ class ToneMapFattal(ToneMap):
         gc.collect()
         print("start")
         # I_vec = spsolve(A, b)
-        # def verbose_callback(residual):
-        #     print(f"residual: {np.sqrt((A * residual - b).dot((A * residual - b)))}", end='\r')
-        I_vec, exit_code = cg(A, b, maxiter=self.maxiter)
+        global ITER_CNT
+        ITER_CNT = 0
+        def verbose_callback(residual):
+            global ITER_CNT
+            ITER_CNT += 1
+            # print(f"residual: {np.sqrt((A * residual - b).dot((A * residual - b)))}", end='\r')
+            print(f"iter: {ITER_CNT}", end='\r')
+        I_vec, exit_code = cg(A, b, maxiter=self.maxiter, callback=verbose_callback)
         # I_vec, exit_code = lgmres(A, b, maxiter=self.maxiter)
         # print(f"exit code: {exit_code}")
         print(f"final residual: {np.sqrt((A * I_vec - b).dot((A * I_vec - b)))}")
@@ -447,7 +451,7 @@ class ToneMapFattal(ToneMap):
         # convert luminance back to RGB
         Lw_3 = np.stack([Lw, Lw, Lw], axis=2)
         Ld_3 = np.stack([Ld, Ld, Ld], axis=2)
-        im_d = Ld_3 * ((im / Lw_3) ** self.saturation)
+        im_d = Ld_3 * ((im / (Lw_3 + 0.00001)) ** self.saturation)
 
         # apply gamma correction before returning if provided with gamma value
         if self.gamma == None:
