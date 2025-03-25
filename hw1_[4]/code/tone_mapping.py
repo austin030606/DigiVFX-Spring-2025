@@ -11,12 +11,19 @@ def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hdr_image", type=str, default="../data/memorial.hdr", help="path to the input .hdr file")
     parser.add_argument("--output_filename_postfix", type=str, default=None, help="output filename postfix")
+    
     parser.add_argument("--tone_map", type=str, default="Reinhard", help="tone map method")
+    parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
+    
     parser.add_argument("--tone_map_type", type=str, default="local", help="tone map type for Reinhard's method")
+    parser.add_argument("--key_value", type=float, default=0.18, help="key value for Reinhard's method")
+    parser.add_argument("--phi", type=float, default=8.0, help="phi for Reinhard's local method")
+    parser.add_argument("--threshold", type=float, default=8.0, help="the threshold used for scale selection for Reinhard's local method")
     parser.add_argument("--scale", type=int, default=43, help="scale for Reinhard's local method")
+    
     parser.add_argument("--base_contrast", type=float, default=None, help="base contrast for Durand's method")
     parser.add_argument("--limit_runtime", type=str, default="Yes", help="whether to limit the runtime of Durand's method, type \"No\" to disable")
-    parser.add_argument("--gamma", type=float, default=None, help="gamma correction value")
+    
     parser.add_argument("--beta", type=float, default=0.8, help="beta value for Fattal's method")
     parser.add_argument("--maxiter", type=int, default=10000, help="max iteration for solving the poisson equation in Fattal's method")
     parser.add_argument("--saturation", type=float, default=1.1, help="saturation value for Fattal's method")
@@ -31,7 +38,7 @@ if __name__ == "__main__":
     hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
 
     if opt.tone_map == "Reinhard":
-        tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type, scales=np.arange(1,opt.scale,2))
+        tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type, scales=np.arange(1,opt.scale,2), a=opt.key_value, phi=opt.phi, epsilon=opt.threshold)
         res_Reinhard = tonemap.process(hdr_im.copy())
         
         if opt.gamma == None:
@@ -57,7 +64,7 @@ if __name__ == "__main__":
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Durand_corrected_8bit)
     elif opt.tone_map == "Fattal":
-        tonemap = ToneMapFattal(gamma=opt.gamma, beta=opt.beta, maxiter=opt.maxiter)
+        tonemap = ToneMapFattal(gamma=opt.gamma, beta=opt.beta, maxiter=opt.maxiter, saturation=opt.saturation)
 
         if hdr_im.shape[0] > hdr_im.shape[1]:
             if hdr_im.shape[0] > 2560:
@@ -67,7 +74,7 @@ if __name__ == "__main__":
             if hdr_im.shape[1] > 2560:
                 scale = 2000 / hdr_im.shape[1]
                 hdr_im = cv2.resize(hdr_im, (0, 0), cv2.INTER_LINEAR, scale, scale)
-        # hdr_im = hdr_im[:,:-80]
+
         res_Fattal = tonemap.process(hdr_im.copy())
 
         if opt.gamma == None:
