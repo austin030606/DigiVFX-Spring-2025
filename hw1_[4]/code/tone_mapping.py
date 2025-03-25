@@ -27,6 +27,8 @@ def parse_opt():
     parser.add_argument("--beta", type=float, default=0.8, help="beta value for Fattal's method")
     parser.add_argument("--maxiter", type=int, default=10000, help="max iteration for solving the poisson equation in Fattal's method")
     parser.add_argument("--saturation", type=float, default=1.1, help="saturation value for Fattal's method")
+    parser.add_argument("--bc", type=int, default=0, help="boundary condition should be set for which side when solving the poisson equation in Fattal's method, represented using a 4-bit number. Starting from the left, if the first bit is 1, then it's set for the left border, if the second bit is 1, the top border, the third, the left, the fourth, the right")
+    
     opt = parser.parse_args()
     return opt
 
@@ -34,9 +36,9 @@ def parse_opt():
 if __name__ == "__main__":
     opt = parse_opt()
     filename = ROOT + opt.hdr_image
-    
-    hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
 
+    hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
+    # hdr_im = hdr_im[:,:-80,:]
     if opt.tone_map == "Reinhard":
         tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type, scales=np.arange(1,opt.scale,2), a=opt.key_value, phi=opt.phi, epsilon=opt.threshold)
         res_Reinhard = tonemap.process(hdr_im.copy())
@@ -64,7 +66,7 @@ if __name__ == "__main__":
         else:
             cv2.imwrite(filename[:-4] + "_" + opt.output_filename_postfix, res_Durand_corrected_8bit)
     elif opt.tone_map == "Fattal":
-        tonemap = ToneMapFattal(gamma=opt.gamma, beta=opt.beta, maxiter=opt.maxiter, saturation=opt.saturation)
+        tonemap = ToneMapFattal(gamma=opt.gamma, beta=opt.beta, maxiter=opt.maxiter, saturation=opt.saturation, boundary_condition=opt.bc)
 
         if hdr_im.shape[0] > hdr_im.shape[1]:
             if hdr_im.shape[0] > 2560:
