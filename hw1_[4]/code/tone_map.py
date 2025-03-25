@@ -277,7 +277,8 @@ class ToneMapFattal(ToneMap):
             gamma = None,
             beta = 0.8,
             maxiter = 10000,
-            saturation = 1.1):
+            saturation = 1.1,
+            boundary_condition: int = 0):
         super().__init__(luminance_coefs, gamma)
         if beta == None:
             beta = 0.8
@@ -288,6 +289,9 @@ class ToneMapFattal(ToneMap):
         if saturation == None:
             saturation = 1.1
         self.saturation = saturation
+        if boundary_condition == None:
+            boundary_condition = 0
+        self.boundary_condition = boundary_condition
 
     def process(self, im):
         im_d = im.copy()
@@ -361,45 +365,49 @@ class ToneMapFattal(ToneMap):
                     row.append(x * width + y)
                     col.append((x + 1) * width + y)
                     val.append(1.0)
+                elif (self.boundary_condition & 0b100) != 0:
                     minus_cnt += 1
-                # else:
-                #     row.append(x * width + y)
-                #     col.append((x) * width + y)
-                #     val.append(1.0)
+                    # row.append(x * width + y)
+                    # col.append((x) * width + y)
+                    # val.append(1.0)
+                    # print("bottom")
 
                 if x - 1 >= 0:
                     row.append(x * width + y)
                     col.append((x - 1) * width + y)
                     val.append(1.0)
+                elif (self.boundary_condition & 0b1000) != 0:
                     minus_cnt += 1
-                # else:
-                #     row.append(x * width + y)
-                #     col.append((x) * width + y)
-                #     val.append(1.0)
+                    # row.append(x * width + y)
+                    # col.append((x) * width + y)
+                    # val.append(1.0)
+                    # print("top")
 
                 if y + 1 < width:
                     row.append(x * width + y)
                     col.append(x * width + (y + 1))
                     val.append(1.0)
+                elif (self.boundary_condition & 0b1) != 0:
                     minus_cnt += 1
-                # else:
-                #     row.append(x * width + y)
-                #     col.append(x * width + (y))
-                #     val.append(1.0)
+                    # row.append(x * width + y)
+                    # col.append(x * width + (y))
+                    # val.append(1.0)
+                    # print("right")
 
                 if y - 1 >= 0:
                     row.append(x * width + y)
                     col.append(x * width + (y - 1))
                     val.append(1.0)
+                elif (self.boundary_condition & 0b10) != 0:
                     minus_cnt += 1
-                # else:
-                #     row.append(x * width + y)
-                #     col.append(x * width + (y))
-                #     val.append(1.0)
+                    # row.append(x * width + y)
+                    # col.append(x * width + (y))
+                    # val.append(1.0)
+                    # print("left")
 
                 row.append(x * width + y)
                 col.append(x * width + y)
-                val.append(-4)
+                val.append(-(4 - minus_cnt))
                 # val.append(-1 * minus_cnt)
 
 
