@@ -37,7 +37,7 @@ if __name__ == "__main__":
     opt = parse_opt()
     filename = ROOT + opt.hdr_image
 
-    hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH)
+    hdr_im = cv2.imread(filename, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
     # hdr_im = hdr_im[:,:-80,:]
     if opt.tone_map == "Reinhard":
         tonemap = ToneMapReinhard(gamma=opt.gamma, map_type=opt.tone_map_type, scales=np.arange(1,opt.scale,2), a=opt.key_value, phi=opt.phi, epsilon=opt.threshold)
