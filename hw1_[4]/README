@@ -78,3 +78,8 @@ for Fattal's method
                                                the fourth, the right
 
 
+<<<<<<< HEAD
+=======
+example command:
+python tone_mapping.py --tone_map Durand --gamma 2.05 --hdr_image ../data/tone_map_results/robertson/output_classroom_01.hdr --base_contrast 4.3
+>>>>>>> f2bc3ad30ae13974f8837931c7050aa32097eeeb

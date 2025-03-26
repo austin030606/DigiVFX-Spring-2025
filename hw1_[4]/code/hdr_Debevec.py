@@ -2,7 +2,6 @@
 from PIL import Image
 import numpy as np
 import os
-import glob
 import rawpy
 import imageio.v3 as iio
 import argparse
