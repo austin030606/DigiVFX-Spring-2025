@@ -1,4 +1,4 @@
-# Example command (Robertson + Durand):
+# Example command (Robertson + Durand) (Our favorite result):
 cd code
 python hdr.py -i ../data/jpg/ -o ../data/ -m robertson
 python tone_mapping.py --tone_map Durand --gamma 2.05 --hdr_image ../data/output_robertson.hdr --base_contrast 4.3
