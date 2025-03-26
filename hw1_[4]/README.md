@@ -3,6 +3,15 @@ cd code
 python hdr.py -i ../data/jpg/ -o ../data/ -m robertson
 python tone_mapping.py --tone_map Durand --gamma 2.05 --hdr_image ../data/output_robertson.hdr --base_contrast 4.3
 
+# Example command 2 (Mitsunaga + Fattal):
+cd code
+python hdr.py -i ../data/jpg/ -o ../data/ -m mitsunaga
+
+
+# Example command 3 (Debevec + Reinhard):
+cd code
+python run_tiff.py
+python hdr.py -i ../data/raw/ -o ../data/ -m debevec
 
 
 # Run HDR
