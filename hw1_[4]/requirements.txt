@@ -3,3 +3,4 @@ rawpy
 numpy
 pillow
 opencv-python
+pyamg

@@ -1,6 +1,7 @@
 # Example command (Robertson + Durand ):
+cd code
 python hdr.py -i ../data/jpg/ -o ../data/ -m robertson
-python tone_mapping.py --tone_map Fattal --gamma 2.0 --hdr_image ../data/output_robertson.hdr --beta 0.95 --maxiter 10000 --saturation 1.3 --bc 5
+python tone_mapping.py --tone_map Durand --gamma 2.05 --hdr_image ../data/output_robertson.hdr --base_contrast 4.3
 
 
 
@@ -78,8 +79,5 @@ for Fattal's method
                                                the fourth, the right
 
 
-<<<<<<< HEAD
-=======
 example command:
 python tone_mapping.py --tone_map Durand --gamma 2.05 --hdr_image ../data/tone_map_results/robertson/output_classroom_01.hdr --base_contrast 4.3
->>>>>>> f2bc3ad30ae13974f8837931c7050aa32097eeeb
