@@ -27,7 +27,7 @@ def parse_opt():
     parser.add_argument("--beta", type=float, default=0.8, help="beta value for Fattal's method")
     parser.add_argument("--maxiter", type=int, default=10000, help="max iteration for solving the poisson equation in Fattal's method")
     parser.add_argument("--saturation", type=float, default=1.1, help="saturation value for Fattal's method")
-    parser.add_argument("--bc", type=int, default=0, help="boundary condition should be set for which side when solving the poisson equation in Fattal's method, represented using a 4-bit number. Starting from the left, if the first bit is 1, then it's set for the left border, if the second bit is 1, the top border, the third, the left, the fourth, the right")
+    parser.add_argument("--bc", type=int, default=0, help="boundary condition should be active for which border when solving the poisson equation in Fattal's method, represented using a 4-bit number. Starting from the left, if the first bit is 1, then it's set for the top border, if the second bit is 1, the bottom border, the third, the left, the fourth, the right")
     
     opt = parser.parse_args()
     return opt
