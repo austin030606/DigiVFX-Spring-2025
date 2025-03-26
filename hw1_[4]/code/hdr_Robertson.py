@@ -56,17 +56,15 @@ def robertson_calibration_single_channel(
 
     N, H, W = images.shape
     
-    # Define weighting function
     def weight(z):
         # z in discrete [0..255].
         if w_fun == "uniform":
             return 1.0
         elif w_fun == "linear":
-            return min(z, 255 - z)  # triangle shape
+            return min(z, 255 - z)  
         elif w_fun == "debevec":
-            return z * (255 - z)    # Debevec-Malik style
+            return z * (255 - z)    
         else:
-            # fallback
             return z * (255 - z)
     
     # 1) Sample valid pixels
@@ -107,7 +105,7 @@ def robertson_calibration_single_channel(
     # Precompute weight lookup
     w_lookup = np.array([weight(z) for z in range(256)], dtype=np.float64)
 
-    # 4) Iteration with tqdm
+    # 4) Iteration 
     for it in range(max_iter):
         # Step A: Update logE
         for j, (r, c) in enumerate(sample_coords):
@@ -181,7 +179,6 @@ def reconstruct_hdr_robertson_single_channel(
         # discrete intensity indices
         Z_idx = np.round(images[i]*255).astype(np.int32)
         
-        # g_map for each pixel
         g_map = g[Z_idx]
         w_map = w_lookup[Z_idx]
         
