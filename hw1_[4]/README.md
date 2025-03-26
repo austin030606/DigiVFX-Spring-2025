@@ -6,13 +6,14 @@ python tone_mapping.py --tone_map Durand --gamma 2.05 --hdr_image ../data/output
 # Example command 2 (Mitsunaga + Fattal):
 cd code
 python hdr.py -i ../data/jpg/ -o ../data/ -m mitsunaga
+python tone_mapping.py --tone_map Fattal --gamma 2.0 --hdr_image ../data/output_robertson.hdr --beta 0.95 --maxiter 10000 --saturation 1.3 --bc 5
 
 
 # Example command 3 (Debevec + Reinhard):
 cd code
 python run_tiff.py
 python hdr.py -i ../data/raw/ -o ../data/ -m debevec
-
+python tone_mapping.py --tone_map Reinhard --gamma 2 --hdr_image ../data/output_robertson.hdr --tone_map_type local --key_value 0.3 --phi 8.0 --threshold 0.05 --scale 26
 
 # Run HDR
 ## Debevec
