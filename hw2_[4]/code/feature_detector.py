@@ -30,7 +30,8 @@ class SIFT(FeatureDetector):
         
         # locate local extrema
         keypoint_candidates = self.compute_keypoint_candidates(DoG_octaves)
-                            
+
+        adjusted_keypoint_candidates, keypoint_offsets = self.compute_keypoint_offsets(keypoint_candidates, DoG_octaves)
         return []
     
     def compute_gaussian_octaves(self, im):
@@ -103,3 +104,40 @@ class SIFT(FeatureDetector):
                         #     keypoint_candidates.append((octave_idx, i, j, k))
         # print(len(keypoint_candidates))
         return keypoint_candidates
+    
+    def compute_keypoint_offsets(self, keypoint_candidates, DoG_octaves):
+        adjusted_keypoint_candidates = []
+        offsets = []
+
+        for octave_idx, i, j, k in keypoint_candidates:
+            D = DoG_octaves[octave_idx]
+
+            x = j
+            y = i
+            s = k
+
+            D_x = (1.0 * D[s][y][x + 1] - D[s][y][x - 1]) / 2.0
+            D_y = (1.0 * D[s][y + 1][x] - D[s][y - 1][x]) / 2.0
+            D_s = (1.0 * D[s + 1][y][x + 1] - D[s - 1][y][x]) / 2.0
+
+            D_xx = D[s][y][x + 1] - 2.0 * D[s][y][x] + D[s][y][x - 1]
+            D_yy = D[s][y + 1][x] - 2.0 * D[s][y][x] + D[s][y - 1][x]
+            D_ss = D[s + 1][y][x] - 2.0 * D[s][y][x] + D[s - 1][y][x]
+
+            D_xy = (1.0 * D[s][y - 1][x - 1] - D[s][y + 1][x - 1] - D[s][y - 1][x + 1] + D[s][y + 1][x + 1]) / 4.0
+            D_xs = (1.0 * D[s - 1][y][x - 1] - D[s + 1][y][x - 1] - D[s - 1][y][x + 1] + D[s + 1][y][x + 1]) / 4.0
+            D_ys = (1.0 * D[s - 1][y - 1][x] - D[s + 1][y - 1][x] - D[s - 1][y + 1][x] + D[s + 1][y + 1][x]) / 4.0
+
+            gradient = np.array([D_x, D_y, D_s])
+            
+            Hessian = np.array([
+                [D_xx, D_xy, D_xs],
+                [D_xy, D_yy, D_ys],
+                [D_xs, D_ys, D_ss]
+            ])
+
+            Hessian_inverse = np.linalg.inv(Hessian)
+
+            offset = -1.0 * Hessian_inverse.dot(gradient)
+            # print(offset)
+        return adjusted_keypoint_candidates, offsets
