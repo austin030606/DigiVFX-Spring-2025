@@ -37,7 +37,7 @@ class SIFT(FeatureDetector):
         # locate local extrema
         keypoint_candidates = self.compute_keypoint_candidates(DoG_octaves)
 
-        adjusted_keypoint_candidates, keypoint_offsets = self.compute_keypoint_offsets(keypoint_candidates, DoG_octaves)
+        adjusted_keypoint_candidates, _ = self.compute_accurate_keypoints(keypoint_candidates, DoG_octaves)
         # values = np.array(self.extremum_values)
         # print(values.min(), values.max(), values.mean())
         # plt.hist(values)
@@ -116,7 +116,7 @@ class SIFT(FeatureDetector):
         # print(len(keypoint_candidates))
         return keypoint_candidates
     
-    def compute_keypoint_offsets(self, keypoint_candidates, DoG_octaves):
+    def compute_accurate_keypoints(self, keypoint_candidates, DoG_octaves):
         adjusted_keypoint_candidates = []
         offsets = []
 
@@ -183,13 +183,14 @@ class SIFT(FeatureDetector):
             
             if found_valid_keypoint_candidate:
                 if not self.is_unstable_or_an_edge(x, y, s, offset, D):
-                    adjusted_keypoint_candidates.append((octave_idx, y, x, s))
+                    # adjusted_keypoint_candidates.append((octave_idx, y, x, s))
+                    adjusted_keypoint_candidates.append((octave_idx, y + offset[1], x + offset[0], s + offset[2]))
                     offsets.append(offset)
             else:
                 # print(f"failed to find valid keypoint candidate after {self.max_iterations} iterations", offset)
                 # print(f"{np.sum(np.abs(offset) > 0.5)} dimension > 0.5", offset)
                 pass
-        print(len(adjusted_keypoint_candidates), len(offsets))
+        print(len(adjusted_keypoint_candidates))
         print(len(keypoint_candidates))
         return adjusted_keypoint_candidates, offsets
     
