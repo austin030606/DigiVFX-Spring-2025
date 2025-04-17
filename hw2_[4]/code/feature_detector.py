@@ -58,9 +58,9 @@ class SIFT(FeatureDetector):
         #     cv2.circle(im_with_keypoints, (x, y), 2, (0, 255, 0), 1)
 
         #     angle = kp[4]
-        #     end_x = int(x + 3 * coord_scale * np.cos(np.deg2rad(angle)))
-        #     end_y = int(y + 3 * coord_scale * np.sin(np.deg2rad(angle)))
-        #     cv2.arrowedLine(im_with_keypoints, (x, y), (end_x, end_y), (255, 0, 0), 1)
+        #     end_x = int(x + 5 * coord_scale * np.cos(np.deg2rad(angle)))
+        #     end_y = int(y + 5 * coord_scale * np.sin(np.deg2rad(angle)))
+        #     cv2.arrowedLine(im_with_keypoints, (x, y), (end_x, end_y), (255, 0, 0), 1, tipLength=0.3)
             
         # # M = cv2.getRotationMatrix2D(center, -37.5, 1.0)
         # # im_with_keypoints = cv2.warpAffine(im_with_keypoints, M, (w, h))
@@ -76,20 +76,22 @@ class SIFT(FeatureDetector):
     
     def compute_gaussian_octaves(self, im):
         octaves = []
-        # cur_base_im = cv2.GaussianBlur(im, (0, 0), self.sigma)
-        cur_base_im = im
+        sigma_init = np.sqrt(self.sigma * self.sigma - 1.0 * 1.0)
+        cur_base_im = cv2.GaussianBlur(im, (0, 0), sigma_init)
+        cur_base_sigma = self.sigma
+        # cur_base_im = im
         k = 2 ** (1 / self.s)
 
         while min(cur_base_im.shape[0], cur_base_im.shape[1]) >= 16:
             cur_octave = [cur_base_im]
 
             for i in range(1, self.s + 3):
-                cur_octave.append(cv2.GaussianBlur(cur_base_im, (0, 0), (k ** i) * self.sigma))
+                cur_sigma = np.sqrt(((k ** i) * cur_base_sigma) ** 2 - (cur_base_sigma ** 2))
+                cur_octave.append(cv2.GaussianBlur(cur_base_im, (0, 0), sigmaX=cur_sigma))
                 
             octaves.append(cur_octave)
             cur_base_im = cur_octave[-3]
-            cur_base_im = cv2.resize(cur_base_im, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_NEAREST)
-          
+            cur_base_im = cv2.resize(cur_base_im, (cur_base_im.shape[1] // 2, cur_base_im.shape[0] // 2), interpolation=cv2.INTER_NEAREST)
         return octaves
     
     def compute_DoG_octaves(self, gaussian_octaves):
@@ -123,9 +125,10 @@ class SIFT(FeatureDetector):
                         found_extrema = True
                         for dk, di, dj in offsets:
                             difference = cur_octave[k][i][j] - cur_octave[k + dk][i + di][j + dj]
-                            if difference == 0:
+                            if abs(difference) < 1e-6:
                                 found_extrema = False
                                 break
+                                # pass
                             else:
                                 if sign == 0:
                                     sign = np.sign(difference)

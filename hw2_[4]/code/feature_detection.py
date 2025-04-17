@@ -42,9 +42,32 @@ if __name__ == "__main__":
     im_gray = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
  
     # sift = cv2.SIFT_create()
-    # kp = sift.detect(im_gray,None)
-    # img=cv2.drawKeypoints(im_gray,kp,im)
-    # cv2.imshow(f"keypoints", img)
+    # kps = sift.detect(im_gray,None)
+    # # # img=cv2.drawKeypoints(im_gray,kp,im)
+    # # # cv2.imshow(f"keypoints", img)
+    # # # cv2.waitKey(0)
+    # # # cv2.destroyAllWindows()
+    # # # 2. make a copy to draw on
+    # img_with_arrows = cv2.cvtColor(im_gray.copy(), cv2.COLOR_GRAY2BGR)
+
+    # # 3. for each keypoint, draw an arrow
+    # arrow_length = 15  # tweak to taste
+    # for kp in kps:
+    #     x, y = kp.pt
+    #     x, y = int(round(x)), int(round(y))
+    #     θ = kp.angle * np.pi / 180.0
+    #     cv2.circle(img_with_arrows, (x, y), 2, (0, 255, 0), 1)
+    # #     L    = kp.size      # arrow length = the diameter of the keypoint region
+    # #     dx   = int(round(L * np.cos(θ)))
+    # #     dy   = int(round(L * np.sin(θ)))
+    # #     start = (int(round(x)), int(round(y)))
+    # #     tip   = (start[0] + dx, start[1] + dy)
+
+    # #     # draw a green arrow; tipLength=0.3 means head is 30% of arrow length
+    # #     cv2.arrowedLine(img_with_arrows, start, tip, (0,255,0), 1, tipLength=0.3)
+
+    # # # 4. display
+    # cv2.imshow("oriented keypoints", img_with_arrows)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
