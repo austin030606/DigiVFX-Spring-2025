@@ -28,6 +28,12 @@ class SIFT(FeatureDetector):
         self.extremum_values = []
         
     def detect(self, im):
+        # for debugging
+        # (h, w) = im.shape[:2]
+        # center = (w // 2, h // 2)
+        # M = cv2.getRotationMatrix2D(center, 37.5, 1.0)
+        # im = cv2.warpAffine(im, M, (w, h))
+        
         # compute octaves
         im_f = im.copy().astype(np.float32) / 255.0
         im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
@@ -38,11 +44,35 @@ class SIFT(FeatureDetector):
         keypoint_candidates = self.compute_keypoint_candidates(DoG_octaves)
 
         adjusted_keypoint_candidates, _ = self.compute_accurate_keypoints(keypoint_candidates, DoG_octaves)
+        keypoints_with_orientation = self.compute_oriented_keypoints(adjusted_keypoint_candidates, gaussian_octaves)
+        
+        # im_with_keypoints = cv2.cvtColor(im.copy(), cv2.COLOR_GRAY2BGR)
+        # for kp in keypoints_with_orientation:
+        #     # (octave_idx, y, x, s, orientation)
+        #     octave_idx = kp[0]
+        #     y = kp[1]
+        #     x = kp[2]
+        #     coord_scale = 2 ** (octave_idx - 1)
+        #     y = int(np.round(y * coord_scale))
+        #     x = int(np.round(x * coord_scale))
+        #     cv2.circle(im_with_keypoints, (x, y), 2, (0, 255, 0), 1)
+
+        #     angle = kp[4]
+        #     end_x = int(x + 3 * coord_scale * np.cos(np.deg2rad(angle)))
+        #     end_y = int(y + 3 * coord_scale * np.sin(np.deg2rad(angle)))
+        #     cv2.arrowedLine(im_with_keypoints, (x, y), (end_x, end_y), (255, 0, 0), 1)
+            
+        # # M = cv2.getRotationMatrix2D(center, -37.5, 1.0)
+        # # im_with_keypoints = cv2.warpAffine(im_with_keypoints, M, (w, h))
+        # cv2.imshow('Keypoints', im_with_keypoints)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
         # values = np.array(self.extremum_values)
         # print(values.min(), values.max(), values.mean())
         # plt.hist(values)
         # plt.show()
-        return []
+        return keypoints_with_orientation
     
     def compute_gaussian_octaves(self, im):
         octaves = []
@@ -148,9 +178,9 @@ class SIFT(FeatureDetector):
                     [D_xs, D_ys, D_ss]
                 ])
 
-                # det = np.linalg.det(Hessian)
-                # if abs(det) < 1e-12:
-                #     break
+                det = np.linalg.det(Hessian)
+                if abs(det) < 1e-12:
+                    break
                 Hessian_inverse = np.linalg.inv(Hessian)
 
                 offset = -1.0 * Hessian_inverse.dot(gradient)
@@ -209,3 +239,53 @@ class SIFT(FeatureDetector):
         Det_Hessian = D_xx * D_yy - D_xy * D_xy
         self.extremum_values.append(np.abs(extremum))
         return np.abs(extremum) * self.s < self.contrast_threshold or ((Tr_Hessian * Tr_Hessian) / Det_Hessian) >= ((self.r + 1) ** 2) / self.r
+    
+    def compute_oriented_keypoints(self, adjusted_keypoint_candidates, gaussian_octaves):
+        keypoints_with_orientation = []
+
+        # (octave_idx, y, x, s)
+        for keypoint in adjusted_keypoint_candidates:
+            octave_idx = keypoint[0]
+            y = keypoint[1]
+            x = keypoint[2]
+            s = keypoint[3]
+
+            # scale = 2 ** (octave_idx - 1)
+            y = int(np.round(y))
+            x = int(np.round(x))
+            s = int(np.round(s))
+
+            L = gaussian_octaves[octave_idx][s]
+            scale = self.sigma * (2 ** (s / self.s))
+            cur_sigma = 1.5 * scale
+
+            orientation_hist = np.zeros(36)
+            window_radius = int(np.round(4 * cur_sigma))
+            for dx in range(-window_radius, window_radius + 1):
+                for dy in range(-window_radius, window_radius + 1):
+                    cur_x = x + dx
+                    cur_y = y + dy
+                    if cur_x > 1 and cur_x < L.shape[1] - 1 and cur_y > 1 and cur_y < L.shape[0] - 1:
+                        gradient_magnitude = np.sqrt((L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]) ** 2 + (L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]) ** 2)
+                        theta = np.arctan2((L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]), (L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]))
+                        theta_degrees = theta * (180 / np.pi)
+                        if theta_degrees < 0:
+                            theta_degrees += 360
+                        bin_id = int(theta_degrees // 10)
+                        gaussian_weight = (1 / (2 * np.pi * (cur_sigma ** 2))) * np.exp((-(dx * dx + dy * dy)) / (2 * (cur_sigma ** 2)))
+                        orientation_hist[bin_id] += gaussian_weight * gradient_magnitude
+            max_orientation_idx = np.argmax(orientation_hist)
+            max_orientation = orientation_hist[max_orientation_idx]
+
+            peak_indices = np.nonzero(orientation_hist >= max_orientation * 0.8)[0]
+            for idx in peak_indices.tolist():
+                h_prev = orientation_hist[(idx - 1) % 36]
+                h_cur  = orientation_hist[idx]
+                h_next = orientation_hist[(idx + 1) % 36]
+                delta = 0 if (h_prev - 2 * h_cur + h_next) == 0 else (h_prev - h_next) / (2 * (h_prev - 2 * h_cur + h_next))
+                keypoint_orientation = (idx + delta) * (360.0 / 36)
+                
+                keypoints_with_orientation.append((keypoint[0], keypoint[1], keypoint[2], keypoint[3], keypoint_orientation))
+            # print(f"{octave_idx} {s}")
+        print(len(keypoints_with_orientation))
+        return keypoints_with_orientation
