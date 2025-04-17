@@ -59,7 +59,42 @@ class SIFT(FeatureDetector):
         return descriptors
     
     def compute_descriptor(self, kp, grad_x_L, grad_y_L):
-        pass
+        theta = np.deg2rad(kp[4])
+        gradient_angles = np.arctan2(grad_y_L, grad_x_L)
+        relative_gradient_angles = gradient_angles - theta
+        relative_gradient_angles = (relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
+
+        gradient_magnitudes = np.hypot(grad_x_L, grad_y_L) 
+
+        # grid offsets
+        offsets = np.linspace(-7.5, +7.5, 16)
+        u, v = np.meshgrid(offsets, offsets) # (16,16) * 2
+        gaussian_weights = np.exp(-((u * u + v * v)/(2 * 8 * 8)))
+
+        R = np.array([[ np.cos(theta), -np.sin(theta)],
+                      [ np.sin(theta),  np.cos(theta)]])
+        uv = np.stack([u.ravel(), v.ravel()], axis=1) # (256,2)
+        rot_uv = uv.dot(R.T).reshape(16, 16, 2) # (16,16,2)
+
+        y = kp[1]
+        x = kp[2]
+        map_x = (rot_uv[...,0] + x).astype(np.float32)        # (16,16)
+        map_y = (rot_uv[...,1] + y).astype(np.float32)        # (16,16)
+
+        sampled_gradient_magnitudes = cv2.remap(gradient_magnitudes, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        sampled_relative_gradient_angles = cv2.remap(relative_gradient_angles, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        sampled_relative_gradient_angles = (sampled_relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
+
+        orientation_histograms = np.zeros((4, 4, 8))
+        for i in range(16):
+            for j in range(16):
+                h_i = i // 4
+                h_j = j // 4
+                hist_idx = int((sampled_relative_gradient_angles[i][j]) / (np.pi / 4)) % 8
+
+                orientation_histograms[h_i][h_j][hist_idx] += sampled_gradient_magnitudes[i][j] * gaussian_weights[i][j]
+
+        return orientation_histograms.flatten()
 
     def detect(self, im):
         # for debugging

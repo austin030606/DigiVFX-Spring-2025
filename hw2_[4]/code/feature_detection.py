@@ -73,4 +73,6 @@ if __name__ == "__main__":
 
     sift = SIFT()
 
-    sift.detect(im_gray)
+    kps, des = sift.detectAndCompute(im_gray)
+    print(len(kps), len(des))
+    print(des)
