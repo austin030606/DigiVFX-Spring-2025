@@ -51,6 +51,8 @@ class SIFT(FeatureDetector):
         return keypoints, descriptors
     
     def compute(self, keypoints, im):
+        if im.ndim == 3 and im.shape[2] >= 3:
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
         # compute octaves
         im_f = im.copy().astype(np.float32) / 255.0
         im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
@@ -124,7 +126,8 @@ class SIFT(FeatureDetector):
         # center = (w // 2, h // 2)
         # M = cv2.getRotationMatrix2D(center, 37.5, 1.0)
         # im = cv2.warpAffine(im, M, (w, h))
-        
+        if im.ndim == 3 and im.shape[2] >= 3:
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
         # compute octaves
         im_f = im.copy().astype(np.float32) / 255.0
         im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
