@@ -26,7 +26,41 @@ class SIFT(FeatureDetector):
         self.contrast_threshold = 0.03
         self.r = 10
         self.extremum_values = []
+
+    def detectAndCompute(self, im):
+        keypoints = self.detect(im)
+        descriptors = self.compute(keypoints, im)
+
+        return keypoints, descriptors
+    
+    def compute(self, keypoints, im):
+        # compute octaves
+        im_f = im.copy().astype(np.float32) / 255.0
+        im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+        gaussian_octaves, grad_x_octaves, grad_y_octaves = self.compute_gaussian_octaves(im_f)
         
+        descriptors = []
+        # (octave_idx, y, x, s, orientation)
+        for kp in keypoints:
+            octave_idx = kp[0]
+            y = kp[1]
+            x = kp[2]
+            s = kp[3]
+
+            # scale = 2 ** (octave_idx - 1)
+            y = int(np.round(y))
+            x = int(np.round(x))
+            s = int(np.round(s))
+
+            grad_x_L = grad_x_octaves[octave_idx][s]
+            grad_y_L = grad_y_octaves[octave_idx][s]
+            descriptors.append(self.compute_descriptor(kp, grad_x_L, grad_y_L))
+        
+        return descriptors
+    
+    def compute_descriptor(self, kp, grad_x_L, grad_y_L):
+        pass
+
     def detect(self, im):
         # for debugging
         # (h, w) = im.shape[:2]
