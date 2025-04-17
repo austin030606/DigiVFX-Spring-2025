@@ -5,6 +5,23 @@ import gc
 from scipy.sparse import csr_matrix, diags, eye
 from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator, lgmres
 
+class Keypoint:
+    def __init__(
+            self,
+            octave_idx, 
+            y, 
+            x, 
+            s, 
+            orientation):
+        self.octave_idx = octave_idx
+        self.y = y
+        self.x = x
+        self.s = s
+        self.orientation = orientation
+
+        coord_scale = 2 ** (octave_idx - 1)
+        self.pt = np.array([x * coord_scale, y * coord_scale])
+
 class FeatureDetector:
     def __init__(
             self):
@@ -23,7 +40,7 @@ class SIFT(FeatureDetector):
         self.s = 3 # scale per octave
         self.sigma = 1.6 # for gaussian kernels
         self.max_iterations = 8
-        self.contrast_threshold = 0.03
+        self.contrast_threshold = 0.04
         self.r = 10
         self.extremum_values = []
 
@@ -42,10 +59,10 @@ class SIFT(FeatureDetector):
         descriptors = []
         # (octave_idx, y, x, s, orientation)
         for kp in keypoints:
-            octave_idx = kp[0]
-            y = kp[1]
-            x = kp[2]
-            s = kp[3]
+            octave_idx = kp.octave_idx
+            y = kp.y
+            x = kp.x
+            s = kp.s
 
             # scale = 2 ** (octave_idx - 1)
             y = int(np.round(y))
@@ -59,7 +76,7 @@ class SIFT(FeatureDetector):
         return descriptors
     
     def compute_descriptor(self, kp, grad_x_L, grad_y_L):
-        theta = np.deg2rad(kp[4])
+        theta = np.deg2rad(kp.orientation)
         gradient_angles = np.arctan2(grad_y_L, grad_x_L)
         relative_gradient_angles = gradient_angles - theta
         relative_gradient_angles = (relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
@@ -76,8 +93,8 @@ class SIFT(FeatureDetector):
         uv = np.stack([u.ravel(), v.ravel()], axis=1) # (256,2)
         rot_uv = uv.dot(R.T).reshape(16, 16, 2) # (16,16,2)
 
-        y = kp[1]
-        x = kp[2]
+        y = kp.y
+        x = kp.x
         map_x = (rot_uv[...,0] + x).astype(np.float32)        # (16,16)
         map_y = (rot_uv[...,1] + y).astype(np.float32)        # (16,16)
 
@@ -94,7 +111,12 @@ class SIFT(FeatureDetector):
 
                 orientation_histograms[h_i][h_j][hist_idx] += sampled_gradient_magnitudes[i][j] * gaussian_weights[i][j]
 
-        return orientation_histograms.flatten()
+        feature_vector = orientation_histograms.flatten()
+        feature_vector /= np.linalg.norm(feature_vector)
+        feature_vector = np.clip(feature_vector, feature_vector.min(), 0.2)
+        feature_vector /= np.linalg.norm(feature_vector)
+
+        return feature_vector.tolist()
 
     def detect(self, im):
         # for debugging
@@ -377,7 +399,7 @@ class SIFT(FeatureDetector):
                 delta = 0 if (h_prev - 2 * h_cur + h_next) == 0 else (h_prev - h_next) / (2 * (h_prev - 2 * h_cur + h_next))
                 keypoint_orientation = (idx + delta) * (360.0 / 36)
                 
-                keypoints_with_orientation.append((keypoint[0], keypoint[1], keypoint[2], keypoint[3], keypoint_orientation))
+                keypoints_with_orientation.append(Keypoint(keypoint[0], keypoint[1], keypoint[2], keypoint[3], keypoint_orientation))
             # print(f"{octave_idx} {s}")
         print(len(keypoints_with_orientation))
         return keypoints_with_orientation
