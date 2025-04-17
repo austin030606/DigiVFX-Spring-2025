@@ -37,14 +37,14 @@ class SIFT(FeatureDetector):
         # compute octaves
         im_f = im.copy().astype(np.float32) / 255.0
         im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-        gaussian_octaves = self.compute_gaussian_octaves(im_f)
+        gaussian_octaves, grad_x_octaves, grad_y_octaves = self.compute_gaussian_octaves(im_f)
         DoG_octaves = self.compute_DoG_octaves(gaussian_octaves)
         
         # locate local extrema
         keypoint_candidates = self.compute_keypoint_candidates(DoG_octaves)
 
         adjusted_keypoint_candidates, _ = self.compute_accurate_keypoints(keypoint_candidates, DoG_octaves)
-        keypoints_with_orientation = self.compute_oriented_keypoints(adjusted_keypoint_candidates, gaussian_octaves)
+        keypoints_with_orientation = self.compute_oriented_keypoints(adjusted_keypoint_candidates, gaussian_octaves, grad_x_octaves, grad_y_octaves)
         
         # im_with_keypoints = cv2.cvtColor(im.copy(), cv2.COLOR_GRAY2BGR)
         # for kp in keypoints_with_orientation:
@@ -76,23 +76,39 @@ class SIFT(FeatureDetector):
     
     def compute_gaussian_octaves(self, im):
         octaves = []
+        grad_x_octaves = []
+        grad_y_octaves = []
         sigma_init = np.sqrt(self.sigma * self.sigma - 1.0 * 1.0)
         cur_base_im = cv2.GaussianBlur(im, (0, 0), sigma_init)
         cur_base_sigma = self.sigma
         # cur_base_im = im
         k = 2 ** (1 / self.s)
 
+        gradx_kernel = np.array([[0,0,0],
+                                 [-1,0,1],
+                                 [0,0,0]])
+        grady_kernel = np.array([[0,-1,0],
+                                 [0,0,0],
+                                 [0,1,0]])
+
         while min(cur_base_im.shape[0], cur_base_im.shape[1]) >= 16:
             cur_octave = [cur_base_im]
-
+            cur_grad_x_octave = [cv2.filter2D(cur_base_im, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE)]
+            cur_grad_y_octave = [cv2.filter2D(cur_base_im, -1, grady_kernel, borderType=cv2.BORDER_REPLICATE)]
+            
             for i in range(1, self.s + 3):
                 cur_sigma = np.sqrt(((k ** i) * cur_base_sigma) ** 2 - (cur_base_sigma ** 2))
-                cur_octave.append(cv2.GaussianBlur(cur_base_im, (0, 0), sigmaX=cur_sigma))
+                cur_blurred_im = cv2.GaussianBlur(cur_base_im, (0, 0), sigmaX=cur_sigma)
+                cur_octave.append(cur_blurred_im)
+                cur_grad_x_octave.append(cv2.filter2D(cur_blurred_im, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE))
+                cur_grad_y_octave.append(cv2.filter2D(cur_blurred_im, -1, grady_kernel, borderType=cv2.BORDER_REPLICATE))
                 
             octaves.append(cur_octave)
+            grad_x_octaves.append(cur_grad_x_octave)
+            grad_y_octaves.append(cur_grad_y_octave)
             cur_base_im = cur_octave[-3]
             cur_base_im = cv2.resize(cur_base_im, (cur_base_im.shape[1] // 2, cur_base_im.shape[0] // 2), interpolation=cv2.INTER_NEAREST)
-        return octaves
+        return octaves, grad_x_octaves, grad_y_octaves
     
     def compute_DoG_octaves(self, gaussian_octaves):
         octaves = []
@@ -243,7 +259,7 @@ class SIFT(FeatureDetector):
         self.extremum_values.append(np.abs(extremum))
         return np.abs(extremum) * self.s < self.contrast_threshold or ((Tr_Hessian * Tr_Hessian) / Det_Hessian) >= ((self.r + 1) ** 2) / self.r
     
-    def compute_oriented_keypoints(self, adjusted_keypoint_candidates, gaussian_octaves):
+    def compute_oriented_keypoints(self, adjusted_keypoint_candidates, gaussian_octaves, grad_x_octaves, grad_y_octaves):
         keypoints_with_orientation = []
 
         # (octave_idx, y, x, s)
@@ -259,6 +275,8 @@ class SIFT(FeatureDetector):
             s = int(np.round(s))
 
             L = gaussian_octaves[octave_idx][s]
+            grad_x_L = grad_x_octaves[octave_idx][s]
+            grad_y_L = grad_y_octaves[octave_idx][s]
             scale = self.sigma * (2 ** (s / self.s))
             cur_sigma = 1.5 * scale
 
@@ -269,8 +287,10 @@ class SIFT(FeatureDetector):
                     cur_x = x + dx
                     cur_y = y + dy
                     if cur_x > 1 and cur_x < L.shape[1] - 1 and cur_y > 1 and cur_y < L.shape[0] - 1:
-                        gradient_magnitude = np.sqrt((L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]) ** 2 + (L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]) ** 2)
-                        theta = np.arctan2((L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]), (L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]))
+                        # gradient_magnitude = np.sqrt((L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]) ** 2 + (L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]) ** 2)
+                        gradient_magnitude = np.sqrt(grad_x_L[cur_y][cur_x] ** 2 + grad_y_L[cur_y][cur_x] ** 2)
+                        # theta = np.arctan2((L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]), (L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]))
+                        theta = np.arctan2(grad_y_L[cur_y][cur_x], grad_x_L[cur_y][cur_x])
                         theta_degrees = theta * (180 / np.pi)
                         if theta_degrees < 0:
                             theta_degrees += 360
