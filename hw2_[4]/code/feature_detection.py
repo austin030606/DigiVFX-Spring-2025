@@ -42,7 +42,8 @@ if __name__ == "__main__":
     im_gray = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
  
     # sift = cv2.SIFT_create()
-    # kps = sift.detect(im_gray,None)
+    # kps, des = sift.detectAndCompute(im_gray,None)
+    # print(len(des[0]))
     # # # img=cv2.drawKeypoints(im_gray,kp,im)
     # # # cv2.imshow(f"keypoints", img)
     # # # cv2.waitKey(0)
@@ -73,4 +74,6 @@ if __name__ == "__main__":
 
     sift = SIFT()
 
-    sift.detect(im_gray)
+    kps, des = sift.detectAndCompute(im_gray)
+    print(len(kps), len(des), len(des[0]))
+    # print(des)

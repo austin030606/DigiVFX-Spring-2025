@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from tqdm import tqdm
 import glob
+from feature_detector import SIFT
 
 def extract_features(img):
     # img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-    sift = cv2.SIFT_create()
-    keypoints, descriptors = sift.detectAndCompute(img, None)
+    # sift = cv2.SIFT_create()
+    sift = SIFT()
+    keypoints, descriptors = sift.detectAndCompute(img)
     return keypoints, descriptors
 
 def match_features(desc1, desc2, ratio_thresh=0.75):
