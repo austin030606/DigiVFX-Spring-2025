@@ -82,16 +82,10 @@ class SIFT(FeatureDetector):
     
     def compute_descriptor(self, kp, grad_x_L, grad_y_L):
         theta = np.deg2rad(kp.orientation)
-        gradient_angles = np.arctan2(grad_y_L, grad_x_L)
-        relative_gradient_angles = gradient_angles - theta
-        relative_gradient_angles = (relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
-
-        gradient_magnitudes = np.hypot(grad_x_L, grad_y_L) 
-
         # grid offsets
         offsets = np.linspace(-7.5, +7.5, 16)
         u, v = np.meshgrid(offsets, offsets) # (16,16) * 2
-        gaussian_weights = np.exp(-((u * u + v * v)/(2 * 8 * 8)))
+        gaussian_weights = np.exp(-((u * u + v * v)/(2 * 8 * 8))).ravel()
 
         R = np.array([[ np.cos(theta), -np.sin(theta)],
                       [ np.sin(theta),  np.cos(theta)]])
@@ -102,21 +96,48 @@ class SIFT(FeatureDetector):
         x = kp.x
         map_x = (rot_uv[...,0] + x).astype(np.float32)        # (16,16)
         map_y = (rot_uv[...,1] + y).astype(np.float32)        # (16,16)
+        
+        # SLOW
+        # gradient_angles = np.arctan2(grad_y_L, grad_x_L)
+        # relative_gradient_angles = gradient_angles - theta
+        # relative_gradient_angles = (relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
+        # gradient_magnitudes = np.hypot(grad_x_L, grad_y_L) 
 
-        sampled_gradient_magnitudes = cv2.remap(gradient_magnitudes, map_x, map_y, interpolation=cv2.INTER_LINEAR)
-        sampled_relative_gradient_angles = cv2.remap(relative_gradient_angles, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+
+        # sampled_gradient_magnitudes = cv2.remap(gradient_magnitudes, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
+        # sampled_relative_gradient_angles = cv2.remap(relative_gradient_angles, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
+        # sampled_relative_gradient_angles = (sampled_relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
+
+        sampled_grad_x_L = cv2.remap(grad_x_L, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
+        sampled_grad_y_L = cv2.remap(grad_y_L, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
+        sampled_gradient_magnitudes = np.hypot(sampled_grad_x_L, sampled_grad_y_L) 
+        sampled_gradient_angles = np.arctan2(sampled_grad_y_L, sampled_grad_x_L)
+        sampled_relative_gradient_angles = sampled_gradient_angles - theta
         sampled_relative_gradient_angles = (sampled_relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
 
-        orientation_histograms = np.zeros((4, 4, 8))
-        for i in range(16):
-            for j in range(16):
-                h_i = i // 4
-                h_j = j // 4
-                hist_idx = int((sampled_relative_gradient_angles[i][j]) / (np.pi / 4)) % 8
+        bin_ids = ((sampled_relative_gradient_angles) / (np.pi / 4)).astype(int) % 8
+        cell_id = np.arange(256)
+        cell_id = 4 * (cell_id // 64) + (cell_id % 16) // 4
+        bin_ids += cell_id * 8
+        
+        feature_vector = np.bincount(
+            bin_ids,
+            weights = sampled_gradient_magnitudes * gaussian_weights,
+            minlength = 128
+        )
 
-                orientation_histograms[h_i][h_j][hist_idx] += sampled_gradient_magnitudes[i][j] * gaussian_weights[i][j]
+        # SLOW
+        # orientation_histograms = np.zeros((4, 4, 8))
+        # for i in range(16):
+        #     for j in range(16):
+        #         h_i = i // 4
+        #         h_j = j // 4
+        #         hist_idx = int((sampled_relative_gradient_angles[i * 16 + j]) / (np.pi / 4)) % 8
 
-        feature_vector = orientation_histograms.flatten()
+        #         orientation_histograms[h_i][h_j][hist_idx] += sampled_gradient_magnitudes[i * 16 + j] * gaussian_weights[i * 16 + j]
+        # # print(orientation_histogram - orientation_histogram.flatten())
+        # feature_vector = orientation_histograms.flatten()
+        
         feature_vector /= np.linalg.norm(feature_vector)
         feature_vector = np.clip(feature_vector, feature_vector.min(), 0.2)
         feature_vector /= np.linalg.norm(feature_vector)
@@ -441,6 +462,7 @@ class SIFT(FeatureDetector):
                 minlength=36
             )
 
+            # SLOW
             # orientation_hist = np.zeros(36)
             # for dx in range(-window_radius, window_radius + 1):
             #     for dy in range(-window_radius, window_radius + 1):
