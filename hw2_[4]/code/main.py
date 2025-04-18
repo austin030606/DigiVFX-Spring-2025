@@ -10,7 +10,7 @@ def main():
         704.289, 704.676, 704.847, 704.537, 705.102, 705.576
     ]
 
-    panorama = stitch_images(IMAGE_LIST,focals)
+    panorama = stitch_images(IMAGE_LIST, focals, blending_method= "linear")
     cv2.imwrite("panorama.jpg", panorama)
     
 

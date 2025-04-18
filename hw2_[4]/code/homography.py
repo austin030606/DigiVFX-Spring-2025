@@ -10,7 +10,10 @@ from scipy.spatial import cKDTree
 from collections import defaultdict
 import glob
 from feature_matching import *
+from blending import poisson_blend
 from scipy.optimize import least_squares
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import cg   # conjugate–gradient
 
 
 def similarity_transform(points):
@@ -272,70 +275,96 @@ def accumulate_homographies(H_pair, ref_idx):
 
 
 # Bundle Adjustment
-def collect_matches(cyl_imgs):
-    """
-    Returns a dict   matches[(i,j)] = (pts_i, pts_j)
-    where  pts_i, pts_j  are (K,2) float32 arrays of corresponding
-    pixel coords *in cylindrical space*.
-    """
-    matcher = defaultdict(tuple)
-    N = len(cyl_imgs)
-    for i in range(N-1):
-        kp_i, des_i = extract_features(cyl_imgs[i])
-        for j in range(i+1, N):
-            kp_j, des_j = extract_features(cyl_imgs[j])
-
-            m = match_features(des_i, des_j)
-            if len(m) < 8:            # skip weak overlap
-                continue
-            pts_i = np.float32([kp_i[x.queryIdx].pt for x in m])
-            pts_j = np.float32([kp_j[x.trainIdx].pt for x in m])
-
-            matcher[(i, j)] = (pts_i, pts_j)
-    return matcher
-
-def bundle_adjust_translations(matches, n_images, ref_idx=0):
-    # parameter vector  p = [dx1,dy1, dx2,dy2, ..., dx_{N-1},dy_{N-1}]
-    # (reference image omitted because it's fixed at 0)
-    var_indices = [k for k in range(n_images) if k != ref_idx]
-    idx_map = {k: i for i, k in enumerate(var_indices)}
-
-    def residuals(p):
-        res = []
-        for (i, j), (Pi, Pj) in matches.items():
-            # current shifts
-            ti = np.array([0, 0]) if i == ref_idx else p[2*idx_map[i]:2*idx_map[i]+2]
-            tj = np.array([0, 0]) if j == ref_idx else p[2*idx_map[j]:2*idx_map[j]+2]
-
-            # residuals for all points in this pair
-            diff = (Pi + ti) - (Pj + tj)      # (K,2)
-            res.append(diff.ravel())
-        return np.concatenate(res)
-
-    p0 = np.zeros(2 * (n_images-1), dtype=np.float64)
-    sol = least_squares(residuals, p0, verbose=1, x_scale='jac')
-
-    # re‑insert the reference (0,0)
-    shifts = np.zeros((n_images, 2), dtype=np.float64)
-    for k in var_indices:
-        shifts[k] = sol.x[2*idx_map[k]:2*idx_map[k]+2]
-    return shifts
+def rot_y(theta):
+    c, s = np.cos(theta), np.sin(theta)
+    return np.array([[ c, 0,  s],
+                     [ 0, 1,  0],
+                     [-s, 0,  c]])
 
 
-def stitch_images(image_paths, f, blend_linear=True, use_similarity=False):
+def make_jac_sparsity(tracks, N):
+    m = 2 * len(tracks)
+    n = N + 1
+    J = lil_matrix((m, n), dtype=int)
+
+    for k, (i, _, j, _,) in enumerate(tracks):
+        r0 = 2 * k
+        cols = (i, j, n-1)          # θ_i, θ_j, log f
+        for c in cols:
+            J[r0, c]     = 1        # x‑residual
+            J[r0 + 1, c] = 1        # y‑residual
+    return J.tocsr()
+
+def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
+    if not tracks:
+        raise ValueError("tracks is empty")
+
+    # number of images
+    N = 1 + max(max(t[0], t[2]) for t in tracks)
+
+    w, h  = img_wh
+    cx, cy = w / 2.0, h / 2.0
+    f0 = f_init if f_init is not None else 0.5 * w
+
+    def K(f):
+        return np.array([[f, 0, cx],
+                         [0, f, cy],
+                         [0, 0, 1]])
+
+    def resid(p):
+        theta = p[:-1]
+        f     = np.exp(p[-1])
+        K_f   = K(f)
+        Kinv  = np.linalg.inv(K_f)
+
+        errs = []
+        for i, p_i, j, p_j in tracks:
+            R_i, R_j = rot_y(theta[i]), rot_y(theta[j])
+            H_ij = K_f @ (R_j @ R_i.T) @ Kinv
+
+            q = H_ij @ np.append(p_i, 1.0)
+            q /= q[2]
+            errs.extend(q[:2] - p_j)
+        return np.asarray(errs, np.float64)
+
+    x0 = np.zeros(N + 1); x0[-1] = np.log(f0)
+
+    res = least_squares(resid, x0,
+                        jac='2-point',      # finite‑difference Jacobian
+                        loss='soft_l1', f_scale=2.0,
+                        max_nfev=max_nfev)
+    
+    # Jsp = make_jac_sparsity(tracks, N)
+    # res = least_squares(
+    #     resid, x0,
+    #     jac_sparsity=Jsp,          # <-- key line
+    #     loss='soft_l1', f_scale=2.0,
+    #     max_nfev=max_nfev,         # keep your existing cap
+    #     x_scale='jac')
+
+    theta_opt = res.x[:-1]
+    f_opt     = np.exp(res.x[-1])
+    return theta_opt, f_opt
+
+
+
+def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, method = "cylindrical", blending_method = "linear"):
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
-
+    MAX_MATCHES = 400
     assert N >= 2, "Need at least two images"
 
-    # 0. cylindrical projection
-    cyl_imgs   = []
-    cyl_masks  = []
-    for i in range(N):                      # imgs = original BGR list
-        cyl, m = cylindrical_warp(imgs[i], f[i])
-        cyl_imgs.append(cyl)
-        cyl_masks.append(m)
-
+    if method == "cylindrical":
+        # 0. cylindrical projection
+        cyl_imgs   = []
+        cyl_masks  = []
+        for i in range(N):                      # imgs = original BGR list
+            cyl, m = cylindrical_warp(imgs[i], f[i])
+            cyl_imgs.append(cyl)
+            cyl_masks.append(m)
+    else:
+        cyl_imgs = imgs
+    
     # 1. pair‑wise homographies (i  ->  i+1)
     H_pair = []
     tracks = []   
@@ -343,7 +372,7 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False):
         kp1, des1 = extract_features(cyl_imgs[i])
         kp2, des2 = extract_features(cyl_imgs[i+1])
 
-        matches   = match_features(des1, des2)
+        matches  = match_features(des1, des2)
         
         for m in matches:
             p_i = np.float32(kp1[m.queryIdx].pt)
@@ -356,18 +385,39 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False):
         # build point arrays for RANSAC
         pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
         pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
-
+        
         # H,_ = ransac_homography(pts1, pts2)
         H, _ = ransac_translation(pts1, pts2)
         H_pair.append(H)
 
+    # bundle
+    if method == "perspective":
+        img_h, img_w = cyl_imgs[0].shape[:2]     # they’re still perspective now
+        theta, f_opt = bundle_adjust_yaw_f(tracks, (img_w, img_h))    
+        
     # 2. pick middle image as reference
     ref_idx  = N // 2
+    
+    if method == "perspective":    
+        K = np.array([[f_opt, 0, img_w/2],
+                [0, f_opt, img_h/2],
+                [0, 0, 1]], dtype=np.float64)
+
+        R_y = [rot_y(t) for t in theta]
 
     # 3. accumulate H_i→ref
-    H_to_ref = accumulate_homographies(H_pair, ref_idx)
-    H_to_ref = correct_vertical_drift(H_to_ref)
-
+    if method == "cylindrical":
+        H_to_ref = accumulate_homographies(H_pair, ref_idx)
+        H_to_ref = correct_vertical_drift(H_to_ref)
+    else:
+            # H_i→ref = K · R_ref · R_iᵀ · K⁻¹
+        Kinv  = np.linalg.inv(K)
+        H_to_ref = []
+        R_ref = R_y[ref_idx]
+        for i in range(len(theta)):
+            H = K @ (R_ref @ R_y[i].T) @ Kinv
+            H /= H[2,2]
+            H_to_ref.append(H)
 
     # 4. find panorama canvas bounds
     corners = []
@@ -388,28 +438,45 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False):
     acc   = np.zeros((ymax-ymin, xmax-xmin, 3), np.float32)
     mask  = np.zeros((ymax-ymin, xmax-xmin, 1), np.float32)   # weight map
 
+    panorama = cv2.warpPerspective(cyl_imgs[ref_idx], H_trans @ H_to_ref[ref_idx], canvas_sz)
+
+    # blending
     for i, img in enumerate(cyl_imgs):
+        if i == ref_idx and blending_method == "poisson":   # the reference is already in place
+            continue
         H      = H_trans @ H_to_ref[i]
         warped = cv2.warpPerspective(img, H, canvas_sz)
 
         # weight = 1 inside warped region, 0 outside
         gray   = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
         wmask  = (gray > 0).astype(np.float32)[...,None]
+        
 
-        if blend_linear:
-            # simple feather: distance to nearest zero pixel
-            dist = cv2.distanceTransform((wmask[...,0]).astype(np.uint8), cv2.DIST_L2, 5)
-            dist = dist / dist.max()            # 0~1
-            wmask = wmask * dist[...,None]
+        # add one dimens
+        # wmask  = mask.astype(np.float32)[..., None] 
+        
+        if blending_method =="linear":
+            if blend_linear:
+                # simple feather: distance to nearest zero pixel
+                dist = cv2.distanceTransform((wmask[...,0]).astype(np.uint8), cv2.DIST_L2, 5)
+                dist = dist / dist.max()            # 0~1
+                wmask = wmask * dist[...,None]
 
-        acc  += warped.astype(np.float32) * wmask
-        mask += wmask
+            acc  += warped.astype(np.float32) * wmask
+            mask += wmask
+    
 
-    panorama = (acc / np.maximum(mask,1e-8)).astype(np.uint8)
+            panorama = (acc / np.maximum(mask,1e-8)).astype(np.uint8)
 
-    # 6. optional: crop remaining black border
+        elif blending_method == "poisson":
+            # implement poisson blending here
+
+            raise ValueError(f"Unknown blending method: {blending_method}")
+
     gray = cv2.cvtColor(panorama, cv2.COLOR_BGR2GRAY)
     ys, xs = np.where(gray > 0)
     panorama = panorama[ys.min():ys.max()+1, xs.min():xs.max()+1]
 
     return panorama
+
+
