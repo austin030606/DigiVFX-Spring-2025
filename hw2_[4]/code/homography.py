@@ -276,7 +276,6 @@ def accumulate_homographies(H_pair, ref_idx):
 
 # Bundle Adjustment
 def rot_y(theta):
-    """3×3 rotation matrix for a yaw angle θ (radians)."""
     c, s = np.cos(theta), np.sin(theta)
     return np.array([[ c, 0,  s],
                      [ 0, 1,  0],
@@ -284,10 +283,6 @@ def rot_y(theta):
 
 
 def make_jac_sparsity(tracks, N):
-    """
-    m = 2*len(tracks) residuals,  n = N (thetas) + 1 (log f) parameters
-    Each residual touches θ_i, θ_j and f.
-    """
     m = 2 * len(tracks)
     n = N + 1
     J = lil_matrix((m, n), dtype=int)
@@ -301,10 +296,6 @@ def make_jac_sparsity(tracks, N):
     return J.tocsr()
 
 def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
-    """
-    tracks : list of (i, p_i, j, p_j)
-    img_wh : (w, h)
-    """
     if not tracks:
         raise ValueError("tracks is empty")
 
@@ -482,10 +473,9 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
 
             raise ValueError(f"Unknown blending method: {blending_method}")
 
-    # 6. optional: crop remaining black border
-    # gray = cv2.cvtColor(panorama, cv2.COLOR_BGR2GRAY)
-    # ys, xs = np.where(gray > 0)
-    # panorama = panorama[ys.min():ys.max()+1, xs.min():xs.max()+1]
+    gray = cv2.cvtColor(panorama, cv2.COLOR_BGR2GRAY)
+    ys, xs = np.where(gray > 0)
+    panorama = panorama[ys.min():ys.max()+1, xs.min():xs.max()+1]
 
     return panorama
 
