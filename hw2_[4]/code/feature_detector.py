@@ -47,7 +47,9 @@ class SIFT(FeatureDetector):
 
     def detectAndCompute(self, im):
         keypoints = self.detect(im)
+        print("keypoints found")
         descriptors = self.compute(keypoints, im)
+        print("descriptors calculated")
 
         return keypoints, descriptors
     
@@ -411,23 +413,54 @@ class SIFT(FeatureDetector):
             scale = self.sigma * (2 ** (s / self.s))
             cur_sigma = 1.5 * scale
 
-            orientation_hist = np.zeros(36)
             window_radius = int(np.round(4 * cur_sigma))
-            for dx in range(-window_radius, window_radius + 1):
-                for dy in range(-window_radius, window_radius + 1):
-                    cur_x = x + dx
-                    cur_y = y + dy
-                    if cur_x > 1 and cur_x < L.shape[1] - 1 and cur_y > 1 and cur_y < L.shape[0] - 1:
-                        # gradient_magnitude = np.sqrt((L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]) ** 2 + (L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]) ** 2)
-                        gradient_magnitude = np.sqrt(grad_x_L[cur_y][cur_x] ** 2 + grad_y_L[cur_y][cur_x] ** 2)
-                        # theta = np.arctan2((L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]), (L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]))
-                        theta = np.arctan2(grad_y_L[cur_y][cur_x], grad_x_L[cur_y][cur_x])
-                        theta_degrees = theta * (180 / np.pi)
-                        if theta_degrees < 0:
-                            theta_degrees += 360
-                        bin_id = int(theta_degrees // 10)
-                        gaussian_weight = (1 / (2 * np.pi * (cur_sigma ** 2))) * np.exp((-(dx * dx + dy * dy)) / (2 * (cur_sigma ** 2)))
-                        orientation_hist[bin_id] += gaussian_weight * gradient_magnitude
+            dxs, dys = np.meshgrid(np.arange(-window_radius, window_radius + 1), np.arange(-window_radius, window_radius + 1))
+            xs = x + dxs
+            ys = y + dys
+            valid = (xs > 1) & (xs < L.shape[1] - 1) & (ys > 1) & (ys < L.shape[0] - 1)
+
+            valid_xs = xs[valid]
+            valid_ys = ys[valid]
+            valid_dxs = dxs[valid]
+            valid_dys = dys[valid]
+
+            valid_grad_x = grad_x_L[valid_ys, valid_xs]
+            valid_grad_y = grad_y_L[valid_ys, valid_xs]
+            valid_magnitudes = np.hypot(valid_grad_x, valid_grad_y)
+            angles = (np.degrees(np.arctan2(valid_grad_y, valid_grad_x)) + 360) % 360
+            bin_ids = (angles // 10).astype(int)
+
+            # gaussian weights
+            weights = np.exp(-(valid_dxs**2 + valid_dys**2)/(2*cur_sigma**2))
+            weights /= (2 * np.pi * cur_sigma**2)
+
+            # build your 36‑bin histogram in one call
+            orientation_hist = np.bincount(
+                bin_ids,
+                weights=valid_magnitudes * weights,
+                minlength=36
+            )
+
+            # orientation_hist = np.zeros(36)
+            # for dx in range(-window_radius, window_radius + 1):
+            #     for dy in range(-window_radius, window_radius + 1):
+            #         cur_x = x + dx
+            #         cur_y = y + dy
+            #         if cur_x > 1 and cur_x < L.shape[1] - 1 and cur_y > 1 and cur_y < L.shape[0] - 1:
+            #             # gradient_magnitude = np.sqrt((L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]) ** 2 + (L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]) ** 2)
+            #             gradient_magnitude = np.sqrt(grad_x_L[cur_y][cur_x] ** 2 + grad_y_L[cur_y][cur_x] ** 2)
+            #             # theta = np.arctan2((L[cur_y + 1][cur_x] - L[cur_y - 1][cur_x]), (L[cur_y][cur_x + 1] - L[cur_y][cur_x - 1]))
+            #             theta = np.arctan2(grad_y_L[cur_y][cur_x], grad_x_L[cur_y][cur_x])
+            #             theta_degrees = theta * (180 / np.pi)
+            #             if theta_degrees < 0:
+            #                 theta_degrees += 360
+            #             bin_id = int(theta_degrees // 10)
+            #             gaussian_weight = (1 / (2 * np.pi * (cur_sigma ** 2))) * np.exp((-(dx * dx + dy * dy)) / (2 * (cur_sigma ** 2)))
+            #             orientation_hist[bin_id] += gaussian_weight * gradient_magnitude
+            # # print(hist)
+            # # print(orientation_hist)
+            # # print((hist - orientation_hist) < 1e-9)
+            
             max_orientation_idx = np.argmax(orientation_hist)
             max_orientation = orientation_hist[max_orientation_idx]
 
