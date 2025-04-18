@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import gc
 from scipy.sparse import csr_matrix, diags, eye
 from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator, lgmres
+from scipy.ndimage import maximum_filter, minimum_filter
 
 class Keypoint:
     def __init__(
@@ -143,15 +144,15 @@ class SIFT(FeatureDetector):
         # im_with_keypoints = cv2.cvtColor(im.copy(), cv2.COLOR_GRAY2BGR)
         # for kp in keypoints_with_orientation:
         #     # (octave_idx, y, x, s, orientation)
-        #     octave_idx = kp[0]
-        #     y = kp[1]
-        #     x = kp[2]
+        #     octave_idx = kp.octave_idx
+        #     y = kp.y
+        #     x = kp.x
         #     coord_scale = 2 ** (octave_idx - 1)
         #     y = int(np.round(y * coord_scale))
         #     x = int(np.round(x * coord_scale))
         #     cv2.circle(im_with_keypoints, (x, y), 2, (0, 255, 0), 1)
 
-        #     angle = kp[4]
+        #     angle = kp.orientation
         #     end_x = int(x + 5 * coord_scale * np.cos(np.deg2rad(angle)))
         #     end_y = int(y + 5 * coord_scale * np.sin(np.deg2rad(angle)))
         #     cv2.arrowedLine(im_with_keypoints, (x, y), (end_x, end_y), (255, 0, 0), 1, tipLength=0.3)
@@ -228,34 +229,70 @@ class SIFT(FeatureDetector):
 
         keypoint_candidates = []
         for octave_idx, cur_octave in enumerate(DoG_octaves):
-            for k in range(1, self.s + 1):
-                for i in range(1, cur_octave[k].shape[0] - 1):
-                    for j in range(1, cur_octave[k].shape[1] - 1):
-                        sign = 0
-                        found_extrema = True
-                        for dk, di, dj in offsets:
-                            difference = cur_octave[k][i][j] - cur_octave[k + dk][i + di][j + dj]
-                            if abs(difference) < 1e-6:
-                                found_extrema = False
-                                break
-                                # pass
-                            else:
-                                if sign == 0:
-                                    sign = np.sign(difference)
-                                else:
-                                    cur_sign = np.sign(difference)
-                                    if cur_sign != sign:
-                                        found_extrema = False
-                                        break
+            footprint = np.ones((3, 3, 3), dtype=bool)
+            footprint[1, 1, 1] = False
 
-                        if found_extrema:
-                            keypoint_candidates.append((octave_idx, i, j, k))
-                        # neighbors = []
-                        # for dk, di, dj in offsets:
-                        #     neighbors.append(cur_octave[k + dk][i + di][j + dj])
-                        
-                        # if np.all(cur_octave[k][i][j] > neighbors) or np.all(cur_octave[k][i][j] < neighbors):
-                        #     keypoint_candidates.append((octave_idx, i, j, k))
+            # for maxima: compare each voxel to the max of its 26 neighbors
+            neigh_max = maximum_filter(
+                np.array(cur_octave),
+                footprint=footprint,
+                mode='nearest'
+            )
+            # for minima: compare each voxel to the min of its 26 neighbors
+            neigh_min = minimum_filter(
+                np.array(cur_octave),
+                footprint=footprint,
+                mode='nearest'
+            )
+            max_coords = np.stack(np.where(np.array(cur_octave) > neigh_max), axis=-1)
+            min_coords = np.stack(np.where(np.array(cur_octave) < neigh_min), axis=-1)
+            for coord in max_coords:
+                keypoint_candidates.append((octave_idx, coord[1], coord[2], coord[0]))
+            for coord in min_coords:
+                keypoint_candidates.append((octave_idx, coord[1], coord[2], coord[0]))
+            # SLOW
+            # cnt = 0
+            # for k in range(1, self.s + 1):
+            #     for i in range(1, cur_octave[k].shape[0] - 1):
+            #         for j in range(1, cur_octave[k].shape[1] - 1):
+            #             sign = 0
+            #             found_extrema = True
+            #             for dk, di, dj in offsets:
+            #                 difference = cur_octave[k][i][j] - cur_octave[k + dk][i + di][j + dj]
+            #                 if abs(difference) < 1e-12:
+            #                     found_extrema = False
+            #                     break
+            #                     # pass
+            #                 else:
+            #                     if sign == 0:
+            #                         sign = np.sign(difference)
+            #                     else:
+            #                         cur_sign = np.sign(difference)
+            #                         if cur_sign != sign:
+            #                             found_extrema = False
+            #                             break
+
+            #             if found_extrema:
+            #                 cnt += 1
+            #                 keypoint_candidates.append((octave_idx, i, j, k))
+            # print(cnt)
+            # for row in max_coords:
+            #     found_same = False
+            #     for kp in keypoint_candidates:
+            #         if row[0] == kp[3] and row[1] == kp[1] and row[2] == kp[2] and octave_idx == kp[0]:
+            #             found_same = True
+            #             break
+            #     if not found_same:
+            #         print(row, "has no match")
+            # print('')
+            # for row in min_coords:
+            #     found_same = False
+            #     for kp in keypoint_candidates:
+            #         if row[0] == kp[3] and row[1] == kp[1] and row[2] == kp[2] and octave_idx == kp[0]:
+            #             found_same = True
+            #             break
+            #     if not found_same:
+            #         print(row, "has no match")
         # print(len(keypoint_candidates))
         return keypoint_candidates
     
@@ -333,8 +370,8 @@ class SIFT(FeatureDetector):
                 # print(f"failed to find valid keypoint candidate after {self.max_iterations} iterations", offset)
                 # print(f"{np.sum(np.abs(offset) > 0.5)} dimension > 0.5", offset)
                 pass
-        print(len(adjusted_keypoint_candidates))
-        print(len(keypoint_candidates))
+        # print(len(adjusted_keypoint_candidates))
+        # print(len(keypoint_candidates))
         return adjusted_keypoint_candidates, offsets
     
     def is_unstable_or_an_edge(self, x, y, s, offset, D):
@@ -404,5 +441,5 @@ class SIFT(FeatureDetector):
                 
                 keypoints_with_orientation.append(Keypoint(keypoint[0], keypoint[1], keypoint[2], keypoint[3], keypoint_orientation))
             # print(f"{octave_idx} {s}")
-        print(len(keypoints_with_orientation))
+        # print(len(keypoints_with_orientation))
         return keypoints_with_orientation
