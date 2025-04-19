@@ -9,19 +9,22 @@ from scipy.ndimage import maximum_filter, minimum_filter
 class Keypoint:
     def __init__(
             self,
-            octave_idx, 
-            y, 
-            x, 
-            s, 
-            orientation):
+            octave_idx = None, 
+            y = None, 
+            x = None, 
+            s = None, 
+            orientation = None):
         self.octave_idx = octave_idx
         self.y = y
         self.x = x
         self.s = s
         self.orientation = orientation
 
-        coord_scale = 2 ** (octave_idx - 1)
-        self.pt = np.array([x * coord_scale, y * coord_scale])
+        if octave_idx != None:
+            coord_scale = 2 ** (octave_idx - 1)
+            self.pt = np.array([x * coord_scale, y * coord_scale])
+        else:
+            self.pt = np.array([x, y])
 
 class FeatureDetector:
     def __init__(
@@ -31,7 +34,7 @@ class FeatureDetector:
     def detect(self, im: np.ndarray):
         raise NotImplementedError()
     
-    def compute(self, im: np.ndarray):
+    def compute(self, keypoints, im: np.ndarray):
         raise NotImplementedError()
     
     def detectAndCompute(self, im):
@@ -532,3 +535,85 @@ class SIFT(FeatureDetector):
             # print(f"{octave_idx} {s}")
         # print(len(keypoints_with_orientation))
         return keypoints_with_orientation
+    
+
+class HarrisCornerDetector(FeatureDetector):
+    def __init__(
+            self):
+        pass
+        self.sigma1 = 1.0
+        self.sigma2 = 3.0
+        self.k = 0.04
+        self.threshold_percentage = 0.001
+
+    def detect(self, im: np.ndarray):
+        if im.ndim == 3 and im.shape[2] >= 3:
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        # compute octaves
+        im_f = im.copy().astype(np.float32)
+        im_f_blurred = cv2.GaussianBlur(im_f, (0, 0), sigmaX=self.sigma1)
+        gradx_kernel = np.array([[-1, 0, 1],
+                                 [-2, 0, 2],
+                                 [-1, 0, 1]]) / 8.0
+        grady_kernel = np.array([[-1, -2, -1],
+                                 [ 0,  0,  0],
+                                 [ 1,  2,  1]]) / 8.0
+        
+        I_x = cv2.filter2D(im_f_blurred, -1, gradx_kernel, borderType=cv2.BORDER_REFLECT)
+        I_y = cv2.filter2D(im_f_blurred, -1, grady_kernel, borderType=cv2.BORDER_REFLECT)
+
+        I_x2 = I_x * I_x
+        I_y2 = I_y * I_y
+        I_xy = I_x * I_y
+
+
+        S_x2 = cv2.GaussianBlur(I_x2, (0, 0), sigmaX=self.sigma2)
+        S_y2 = cv2.GaussianBlur(I_y2, (0, 0), sigmaX=self.sigma2)
+        S_xy = cv2.GaussianBlur(I_xy, (0, 0), sigmaX=self.sigma2)
+
+        det_M = S_x2 * S_y2 - S_xy * S_xy
+        trace_M = S_x2 + S_y2
+
+        R = det_M - self.k * trace_M * trace_M
+
+        footprint = np.ones((3, 3), dtype=bool)
+        footprint[1, 1] = False
+
+        
+        threshold = R.max() * self.threshold_percentage
+        R_thresh = np.zeros_like(R)
+        mask = (R > threshold)
+        R_thresh[mask] = R[mask]
+        
+        neigh_max = maximum_filter(R_thresh, footprint=footprint)
+
+        max_coords = np.stack(np.where(R_thresh > neigh_max), axis=-1)
+
+        corners = []
+        for coord in max_coords:
+            # print(coord)
+            corners.append(Keypoint(x=coord[1], y=coord[0]))
+
+        # im_with_keypoints = cv2.cvtColor(im.copy(), cv2.COLOR_GRAY2BGR)
+        # for kp in corners:
+        #     # (octave_idx, y, x, s, orientation)
+        #     y = kp.y
+        #     x = kp.x
+        #     cv2.circle(im_with_keypoints, (x, y), 2, (0, 255, 0), 1)
+
+        # cv2.imshow('Keypoints', im_with_keypoints)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+        # plt.figure(figsize=(8,6))
+        # plt.imshow(R, interpolation='nearest')
+        # plt.colorbar(label='Corner response R')
+        # plt.title('Harris Corner Response Heatmap')
+        # plt.xlabel('x pixel')
+        # plt.ylabel('y pixel')
+        # plt.show()
+
+        return corners
+    
+    def compute(self, keypoints, im: np.ndarray):
+        raise NotImplementedError("Harris corner detector does not compute descriptors")

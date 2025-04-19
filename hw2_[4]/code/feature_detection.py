@@ -2,7 +2,7 @@ import argparse
 import os
 import cv2
 import numpy as np
-from feature_detector import SIFT
+from feature_detector import SIFT, HarrisCornerDetector
 
 
 ROOT = os.path.abspath(".") + "/"
@@ -72,8 +72,12 @@ if __name__ == "__main__":
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
-    sift = SIFT()
+    # sift = SIFT()
 
-    kps, des = sift.detectAndCompute(im_gray)
-    print(len(kps), len(des), len(des[0]))
+    # kps, des = sift.detectAndCompute(im_gray)
+    # print(len(kps), len(des), len(des[0]))
     # print(des)
+
+    harris = HarrisCornerDetector()
+
+    kps = harris.detect(im_gray)
