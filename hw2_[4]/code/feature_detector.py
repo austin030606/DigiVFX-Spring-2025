@@ -40,7 +40,7 @@ class FeatureDetector:
     def detectAndCompute(self, im):
         keypoints = self.detect(im)
         print("keypoints found")
-        descriptors = self.compute(keypoints, im)
+        descriptors, _ = self.compute(keypoints, im)
         print("descriptors calculated")
 
         return keypoints, descriptors
@@ -63,7 +63,12 @@ class SIFT(FeatureDetector):
         im_f = im.copy().astype(np.float32) / 255.0
         im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
         gaussian_octaves, grad_x_octaves, grad_y_octaves = self.compute_gaussian_octaves(im_f)
-        
+        if len(keypoints) > 0 and keypoints[0].orientation == None:
+            keypoint_tuples = []
+            for kp in keypoints:
+                # (octave_idx, y, x, s)
+                keypoint_tuples.append((kp.octave_idx, kp.y, kp.x, kp.s))
+            keypoints = self.compute_oriented_keypoints(keypoint_tuples, gaussian_octaves, grad_x_octaves, grad_y_octaves)
         descriptors = []
         # (octave_idx, y, x, s, orientation)
         for kp in keypoints:
@@ -81,7 +86,7 @@ class SIFT(FeatureDetector):
             grad_y_L = grad_y_octaves[octave_idx][s]
             descriptors.append(self.compute_descriptor(kp, grad_x_L, grad_y_L))
         
-        return descriptors
+        return descriptors, keypoints
     
     def compute_descriptor(self, kp, grad_x_L, grad_y_L):
         theta = np.deg2rad(kp.orientation)
@@ -592,7 +597,7 @@ class HarrisCornerDetector(FeatureDetector):
         corners = []
         for coord in max_coords:
             # print(coord)
-            corners.append(Keypoint(x=coord[1], y=coord[0]))
+            corners.append(Keypoint(x=coord[1], y=coord[0], octave_idx=1, s=0))
 
         # im_with_keypoints = cv2.cvtColor(im.copy(), cv2.COLOR_GRAY2BGR)
         # for kp in corners:
