@@ -33,6 +33,14 @@ class FeatureDetector:
     
     def compute(self, im: np.ndarray):
         raise NotImplementedError()
+    
+    def detectAndCompute(self, im):
+        keypoints = self.detect(im)
+        print("keypoints found")
+        descriptors = self.compute(keypoints, im)
+        print("descriptors calculated")
+
+        return keypoints, descriptors
 
 class SIFT(FeatureDetector):
     def __init__(
@@ -44,14 +52,6 @@ class SIFT(FeatureDetector):
         self.contrast_threshold = 0.04
         self.r = 10
         self.extremum_values = []
-
-    def detectAndCompute(self, im):
-        keypoints = self.detect(im)
-        print("keypoints found")
-        descriptors = self.compute(keypoints, im)
-        print("descriptors calculated")
-
-        return keypoints, descriptors
     
     def compute(self, keypoints, im):
         if im.ndim == 3 and im.shape[2] >= 3:
@@ -91,7 +91,6 @@ class SIFT(FeatureDetector):
                       [ np.sin(theta),  np.cos(theta)]])
         uv = np.stack([u.ravel(), v.ravel()], axis=1) # (256,2)
         rot_uv = uv.dot(R.T).reshape(16, 16, 2) # (16,16,2)
-
         y = kp.y
         x = kp.x
         map_x = (rot_uv[...,0] + x).astype(np.float32)        # (16,16)
@@ -108,12 +107,28 @@ class SIFT(FeatureDetector):
         # sampled_relative_gradient_angles = cv2.remap(relative_gradient_angles, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
         # sampled_relative_gradient_angles = (sampled_relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
 
-        sampled_grad_x_L = cv2.remap(grad_x_L, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
-        sampled_grad_y_L = cv2.remap(grad_y_L, map_x, map_y, interpolation=cv2.INTER_LINEAR).ravel()
-        sampled_gradient_magnitudes = np.hypot(sampled_grad_x_L, sampled_grad_y_L) 
+        sampled_grad_x_L = cv2.remap(grad_x_L, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        sampled_grad_y_L = cv2.remap(grad_y_L, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        sampled_gradient_magnitudes = np.hypot(sampled_grad_x_L, sampled_grad_y_L).ravel()
         sampled_gradient_angles = np.arctan2(sampled_grad_y_L, sampled_grad_x_L)
         sampled_relative_gradient_angles = sampled_gradient_angles - theta
         sampled_relative_gradient_angles = (sampled_relative_gradient_angles + 2 * np.pi) % (2 * np.pi)
+
+        kernel = np.array([[1, 4, 6, 4, 1],
+                           [4, 16, 24, 16, 4],
+                           [6, 24, 36, 24, 6],
+                           [4, 16, 24, 16, 4],
+                           [1, 4, 6, 4, 1]], dtype=np.float32) / 256.0
+        # kernel = np.array([[1, 2, 1],
+        #                    [2, 4, 2],
+        #                    [1, 2, 1]], dtype=np.float32) / 16.0
+        sampled_relative_gradient_angles = cv2.filter2D(
+            sampled_relative_gradient_angles,
+            ddepth=-1,
+            kernel=kernel,
+            borderType=cv2.BORDER_REFLECT
+        ).ravel()
+
 
         bin_ids = ((sampled_relative_gradient_angles) / (np.pi / 4)).astype(int) % 8
         cell_id = np.arange(256)
@@ -211,15 +226,15 @@ class SIFT(FeatureDetector):
 
         while min(cur_base_im.shape[0], cur_base_im.shape[1]) >= 16:
             cur_octave = [cur_base_im]
-            cur_grad_x_octave = [cv2.filter2D(cur_base_im, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE)]
-            cur_grad_y_octave = [cv2.filter2D(cur_base_im, -1, grady_kernel, borderType=cv2.BORDER_REPLICATE)]
+            cur_grad_x_octave = [cv2.filter2D(cur_base_im, -1, gradx_kernel, borderType=cv2.BORDER_REFLECT )]
+            cur_grad_y_octave = [cv2.filter2D(cur_base_im, -1, grady_kernel, borderType=cv2.BORDER_REFLECT )]
             
             for i in range(1, self.s + 3):
                 cur_sigma = np.sqrt(((k ** i) * cur_base_sigma) ** 2 - (cur_base_sigma ** 2))
                 cur_blurred_im = cv2.GaussianBlur(cur_base_im, (0, 0), sigmaX=cur_sigma)
                 cur_octave.append(cur_blurred_im)
-                cur_grad_x_octave.append(cv2.filter2D(cur_blurred_im, -1, gradx_kernel, borderType=cv2.BORDER_REPLICATE))
-                cur_grad_y_octave.append(cv2.filter2D(cur_blurred_im, -1, grady_kernel, borderType=cv2.BORDER_REPLICATE))
+                cur_grad_x_octave.append(cv2.filter2D(cur_blurred_im, -1, gradx_kernel, borderType=cv2.BORDER_REFLECT ))
+                cur_grad_y_octave.append(cv2.filter2D(cur_blurred_im, -1, grady_kernel, borderType=cv2.BORDER_REFLECT ))
                 
             octaves.append(cur_octave)
             grad_x_octaves.append(cur_grad_x_octave)
@@ -449,7 +464,7 @@ class SIFT(FeatureDetector):
             valid_grad_y = grad_y_L[valid_ys, valid_xs]
             valid_magnitudes = np.hypot(valid_grad_x, valid_grad_y)
             angles = (np.degrees(np.arctan2(valid_grad_y, valid_grad_x)) + 360) % 360
-            bin_ids = (angles // 10).astype(int)
+            bin_ids = (np.round(angles / 10)).astype(int)
 
             # gaussian weights
             weights = np.exp(-(valid_dxs**2 + valid_dys**2)/(2*cur_sigma**2))
@@ -461,6 +476,23 @@ class SIFT(FeatureDetector):
                 weights=valid_magnitudes * weights,
                 minlength=36
             )
+
+            hist_img = orientation_hist[None, :]
+            pad = 2
+            padded = cv2.copyMakeBorder(
+                hist_img,
+                top=0, bottom=0, left=pad, right=pad,
+                borderType=cv2.BORDER_WRAP
+            )
+            kernel = np.array([[1, 4, 6, 4, 1]], dtype=np.float32) / 16.0
+            smoothed_padded = cv2.filter2D(
+                padded,
+                ddepth=-1,
+                kernel=kernel,
+                borderType=cv2.BORDER_REFLECT
+            )
+            orientation_hist = smoothed_padded[0, pad:-pad]
+
 
             # SLOW
             # orientation_hist = np.zeros(36)
@@ -491,8 +523,10 @@ class SIFT(FeatureDetector):
                 h_prev = orientation_hist[(idx - 1) % 36]
                 h_cur  = orientation_hist[idx]
                 h_next = orientation_hist[(idx + 1) % 36]
+                if h_cur <= h_prev or h_cur <= h_next:
+                    continue
                 delta = 0 if (h_prev - 2 * h_cur + h_next) == 0 else (h_prev - h_next) / (2 * (h_prev - 2 * h_cur + h_next))
-                keypoint_orientation = (idx + delta) * (360.0 / 36)
+                keypoint_orientation = ((idx + delta) % 36) * (360.0 / 36)
                 
                 keypoints_with_orientation.append(Keypoint(keypoint[0], keypoint[1], keypoint[2], keypoint[3], keypoint_orientation))
             # print(f"{octave_idx} {s}")
