@@ -10,7 +10,7 @@ from scipy.spatial import cKDTree
 from collections import defaultdict
 import glob
 from feature_matching import *
-from blending import poisson_blend
+# from blending import poisson_blend
 from scipy.optimize import least_squares
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import cg   # conjugate–gradient
@@ -348,7 +348,7 @@ def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
 
 
 
-def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, method = "cylindrical", blending_method = "linear"):
+def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, method = "cylindrical", blending_method = "linear", detection_method = "Harris", descriptor_method = "PCA_SIFT"):
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
     MAX_MATCHES = 400
@@ -369,10 +369,10 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
     H_pair = []
     tracks = []   
     for i in tqdm(range(N-1), desc="Pairwise matching"):
-        kp1, des1 = extract_features(cyl_imgs[i])
-        kp2, des2 = extract_features(cyl_imgs[i+1])
+        kp1, des1 = extract_features(cyl_imgs[i], detection_method, descriptor_method)
+        kp2, des2 = extract_features(cyl_imgs[i+1], detection_method, descriptor_method)
 
-        matches  = match_features(des1, des2)
+        matches  = match_features(des1, des2, descriptor_method=descriptor_method)
         
         for m in matches:
             p_i = np.float32(kp1[m.queryIdx].pt)
