@@ -314,18 +314,18 @@ def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
 
     x0 = np.zeros(N + 1); x0[-1] = np.log(f0)
 
-    res = least_squares(resid, x0,
-                        jac='2-point',      # finite‑difference Jacobian
-                        loss='soft_l1', f_scale=2.0,
-                        max_nfev=max_nfev)
+    # res = least_squares(resid, x0,
+    #                     jac='2-point',      # finite‑difference Jacobian
+    #                     loss='soft_l1', f_scale=2.0,
+    #                     max_nfev=max_nfev)
     
-    # Jsp = make_jac_sparsity(tracks, N)
-    # res = least_squares(
-    #     resid, x0,
-    #     jac_sparsity=Jsp,          # <-- key line
-    #     loss='soft_l1', f_scale=2.0,
-    #     max_nfev=max_nfev,         # keep your existing cap
-    #     x_scale='jac')
+    Jsp = make_jac_sparsity(tracks, N)
+    res = least_squares(
+        resid, x0,
+        jac_sparsity=Jsp,          # <-- key line
+        loss='soft_l1', f_scale=2.0,
+        max_nfev=max_nfev,         # keep your existing cap
+        x_scale='jac')
 
     theta_opt = res.x[:-1]
     f_opt     = np.exp(res.x[-1])
