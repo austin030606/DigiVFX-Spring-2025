@@ -622,3 +622,100 @@ class HarrisCornerDetector(FeatureDetector):
     
     def compute(self, keypoints, im: np.ndarray):
         raise NotImplementedError("Harris corner detector does not compute descriptors")
+    
+
+class PCA_SIFT(SIFT):
+    def __init__(
+            self):
+        super().__init__()
+        self.n = 20
+
+    def compute(self, keypoints, im):
+        if im.ndim == 3 and im.shape[2] >= 3:
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        # compute octaves
+        im_f = im.copy().astype(np.float32) / 255.0
+        im_f = cv2.resize(im_f, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+        gaussian_octaves, grad_x_octaves, grad_y_octaves = self.compute_gaussian_octaves(im_f)
+        if len(keypoints) > 0 and keypoints[0].orientation == None:
+            keypoint_tuples = []
+            for kp in keypoints:
+                # (octave_idx, y, x, s)
+                keypoint_tuples.append((kp.octave_idx, kp.y, kp.x, kp.s))
+            keypoints = self.compute_oriented_keypoints(keypoint_tuples, gaussian_octaves, grad_x_octaves, grad_y_octaves)
+        feature_vectors = []
+        # (octave_idx, y, x, s, orientation)
+        for kp in keypoints:
+            octave_idx = kp.octave_idx
+            y = kp.y
+            x = kp.x
+            s = kp.s
+
+            # scale = 2 ** (octave_idx - 1)
+            y = int(np.round(y))
+            x = int(np.round(x))
+            s = int(np.round(s))
+
+            grad_x_L = grad_x_octaves[octave_idx][s]
+            grad_y_L = grad_y_octaves[octave_idx][s]
+            feature_vectors.append(self.compute_feature_vector(kp, grad_x_L, grad_y_L))
+        X = np.array(feature_vectors)
+
+        return X, keypoints
+    
+    def compute_feature_vector(self, kp, grad_x_L, grad_y_L):
+        theta = np.deg2rad(kp.orientation)
+        # grid offsets
+        offsets = np.linspace(-19, +19, 39)
+        u, v = np.meshgrid(offsets, offsets) # (39,39) * 2
+
+        R = np.array([[ np.cos(theta), -np.sin(theta)],
+                      [ np.sin(theta),  np.cos(theta)]])
+        uv = np.stack([u.ravel(), v.ravel()], axis=1) # (1521,2)
+        rot_uv = uv.dot(R.T).reshape(39, 39, 2) # (39,39,2)
+        y = kp.y
+        x = kp.x
+        map_x = (rot_uv[...,0] + x).astype(np.float32)        # (39,39)
+        map_y = (rot_uv[...,1] + y).astype(np.float32)        # (39,39)
+
+        sampled_grad_x_L = cv2.remap(grad_x_L, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        sampled_grad_y_L = cv2.remap(grad_y_L, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        sampled_gradients = np.stack([sampled_grad_x_L.ravel(), sampled_grad_y_L.ravel()], axis=1)
+        rot_sampled_gradients = sampled_gradients.dot(R)
+        feature_vector = np.concatenate([rot_sampled_gradients[:,0], rot_sampled_gradients[:,1]])
+        
+        feature_vector /= np.linalg.norm(feature_vector)
+        return feature_vector
+    
+    def compute_descriptors(self, feature_vecs1, feature_vecs2):
+        X = np.concatenate([feature_vecs1, feature_vecs2])
+
+        mean = X.mean(axis=0)
+
+        X_c = X - mean
+        feature_vecs1_c = feature_vecs1 - mean
+        feature_vecs2_c = feature_vecs2 - mean
+
+        # C = X_c.T.dot(X_c) / X.shape[0]
+
+        # eigen_vals, eigen_vecs = np.linalg.eigh(C)
+
+        # idx = np.argsort(eigen_vals)[::-1]
+        # eigen_vals = eigen_vals[idx]
+        # eigen_vecs = eigen_vecs[:, idx]
+        
+        # components = eigen_vecs[:, :self.n] 
+
+        # descriptors = X_c.dot(components)
+
+        U, s, Vt = np.linalg.svd(X_c, full_matrices=False)
+        components = Vt[:self.n].T
+        # for j in range(20):
+        #     # if the dot‐product is negative, flip the SVD vector
+        #     if np.dot(components[:, j], svdcomponents[:, j]) < 0:
+        #         svdcomponents[:, j] *= -1
+        descriptors1 = feature_vecs1_c.dot(components)
+        descriptors2 = feature_vecs2_c.dot(components)
+        return descriptors1, descriptors2
+        # print(np.sum(np.sum(np.sqrt((descriptors - descriptors2) ** 2), axis=1)))
+        # print(Vt.dot(Vt.T))
