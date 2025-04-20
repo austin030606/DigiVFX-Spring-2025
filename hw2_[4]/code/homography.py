@@ -139,11 +139,6 @@ def ransac_homography(src_pts, dst_pts, thresh=4.0, max_iter=1000, norm=True):
 
 
 def ransac_translation(pts1, pts2, thresh=2.0, max_iter=2000):
-    """
-    Robustly estimate a pure 2‑D translation t = (dx, dy)
-    between two cylindrical images.
-    Returns 3×3 matrix  H  (so the rest of the pipeline is untouched).
-    """
     N = pts1.shape[0]
     best_inl, best_t = [], None
 
@@ -167,11 +162,8 @@ def ransac_translation(pts1, pts2, thresh=2.0, max_iter=2000):
     return H, best_inl
 
 
-def cylindrical_warp(img, f):
-    """
-    Warp `img` to cylindrical coordinates using focal length f.
-    Returns the warped image and a mask indicating valid pixels.
-    """
+def cylindrical_projection(img, f):
+
     h, w = img.shape[:2]
     K = np.array([[f, 0, w/2],
                   [0, f, h/2],
@@ -224,9 +216,6 @@ def correct_vertical_drift(H_to_ref):
 
 
 def warp_images(img1, img2, H):
-    """
-    Warps img1 into img2's coordinate frame using homography H
-    """
     h1, w1 = img1.shape[:2]
     h2, w2 = img2.shape[:2]
 
@@ -253,11 +242,7 @@ def warp_images(img1, img2, H):
 
 
 def accumulate_homographies(H_pair, ref_idx):
-    """
-    H_pair[k] is the homography that maps image k  →  k+1  (same convention as your code).
-    Returns a list H_to_ref so that  dst ~ H_to_ref[i] · src
-    warps *image i* into the reference frame *ref_idx*.
-    """
+
     n = len(H_pair) + 1
     H_to_ref = [np.eye(3) for _ in range(n)]
 
@@ -359,7 +344,7 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
         cyl_imgs   = []
         cyl_masks  = []
         for i in range(N):                      # imgs = original BGR list
-            cyl, m = cylindrical_warp(imgs[i], f[i])
+            cyl, m = cylindrical_projection(imgs[i], f[i])
             cyl_imgs.append(cyl)
             cyl_masks.append(m)
     else:
