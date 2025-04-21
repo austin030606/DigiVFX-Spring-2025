@@ -11,7 +11,7 @@ def main():
     ]
 
     panorama = stitch_images(IMAGE_LIST, focals, blending_method="poisson", detection_method="Harris", descriptor_method="SIFT", correct_vertical_drift_at_the_end=True)
-    cv2.imwrite("panorama 2 imgs.jpg", panorama)
+    cv2.imwrite("panorama.jpg", panorama)
     
 
 if __name__ == "__main__":

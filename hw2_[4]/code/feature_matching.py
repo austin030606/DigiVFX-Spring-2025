@@ -8,7 +8,7 @@ import glob
 from feature_detector import SIFT, HarrisCornerDetector, PCA_SIFT
 
 def extract_features(img, detection_method = "SIFT", descriptor_method = "PCA_SIFT"):
-    print(detection_method, descriptor_method)
+    # print(detection_method, descriptor_method)
     # img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
     # sift = cv2.SIFT_create()
     keypoints = None
