@@ -187,7 +187,8 @@ def cylindrical_projection(img, f):
     mask  = mask.astype(np.uint8) * 255
     return cyl, mask
 
-def correct_vertical_drift(H_to_ref):
+def correct_vertical_drift(H_to_ref, correct_vertical_drift_at_the_end):
+    # return H_to_ref
     # 1. collect horizontal / vertical translations
     dx = np.array([H[0, 2] / H[2, 2] for H in H_to_ref])
     dy = np.array([H[1, 2] / H[2, 2] for H in H_to_ref])
@@ -196,6 +197,12 @@ def correct_vertical_drift(H_to_ref):
     A = np.vstack([dx, np.ones_like(dx)]).T
     a, b = np.linalg.lstsq(A, dy, rcond=None)[0]
 
+    if correct_vertical_drift_at_the_end:
+        H_global = np.array([[1.0, 0.0, 0.0],
+                            [ -a, 1.0,  -b],
+                            [0.0, 0.0, 1.0]])
+        
+        return H_to_ref, H_global
     # 3. build corrected homographies
     H_corr = []
     for H in H_to_ref:
@@ -211,7 +218,7 @@ def correct_vertical_drift(H_to_ref):
 
         H_corr.append(T_corr @ H)
 
-    return H_corr
+    return H_corr, None
 
 
 
@@ -333,7 +340,7 @@ def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
 
 
 
-def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, method = "cylindrical", blending_method = "linear", detection_method = "Harris", descriptor_method = "PCA_SIFT"):
+def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, method = "cylindrical", blending_method = "linear", detection_method = "Harris", descriptor_method = "PCA_SIFT", correct_vertical_drift_at_the_end = False):
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
     MAX_MATCHES = 400
@@ -393,7 +400,7 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
     # 3. accumulate H_i→ref
     if method == "cylindrical":
         H_to_ref = accumulate_homographies(H_pair, ref_idx)
-        H_to_ref = correct_vertical_drift(H_to_ref)
+        H_to_ref, H_global = correct_vertical_drift(H_to_ref, correct_vertical_drift_at_the_end)
     else:
             # H_i→ref = K · R_ref · R_iᵀ · K⁻¹
         Kinv  = np.linalg.inv(K)
@@ -426,8 +433,35 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
     panorama = cv2.warpPerspective(cyl_imgs[ref_idx], H_trans @ H_to_ref[ref_idx], canvas_sz)
 
     # blending
+    if blending_method == "poisson":
+        # first linear blend for poisson
+        for i, img in enumerate(cyl_imgs):
+            H      = H_trans @ H_to_ref[i]
+            warped = cv2.warpPerspective(img, H, canvas_sz)
+
+            # weight = 1 inside warped region, 0 outside
+            gray   = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+            wmask  = (gray > 0).astype(np.float32)[...,None]
+            
+
+            # add one dimens
+            # wmask  = mask.astype(np.float32)[..., None] 
+            
+            if blend_linear:
+                # simple feather: distance to nearest zero pixel
+                dist = cv2.distanceTransform((wmask[...,0]).astype(np.uint8), cv2.DIST_L2, 5)
+                dist = dist / dist.max()            # 0~1
+                wmask = wmask * dist[...,None]
+
+            acc  += warped.astype(np.float32) * wmask
+            mask += wmask
+
+
+            panorama = (acc / np.maximum(mask,1e-8)).astype(np.uint8)
+
+    # cv2.imshow("panorama", panorama)
     for i, img in enumerate(cyl_imgs):
-        if i == ref_idx and blending_method == "poisson":   # the reference is already in place
+        if False and i == ref_idx and blending_method == "poisson":   # the reference is already in place
             continue
         H      = H_trans @ H_to_ref[i]
         warped = cv2.warpPerspective(img, H, canvas_sz)
@@ -455,13 +489,40 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
 
         elif blending_method == "poisson":
             # implement poisson blending here
-
-            raise ValueError(f"Unknown blending method: {blending_method}")
+            # cv2.imshow(f"{i}th image", warped)
+            mask = (gray > 0).astype(np.uint8) * 255
+            # l = np.where(mask[mask.shape[0] // 2] == 255)[0][0]
+            # r = np.where(mask[mask.shape[0] // 2] == 255)[0][-1]
+            # mask[:, :l+60] = 0
+            # mask[:, r-60:] = 0
+            # mask[:15] = np.zeros(mask.shape[1])
+            # mask[mask.shape[0]-15:mask.shape[0]] = np.zeros(mask.shape[1])
+            # cv2.imshow(f"{i}th mask", mask)
+            mass_y, mass_x = np.where(mask > 0)
+            cent_x = np.average(mass_x)
+            cent_y = np.average(mass_y)
+            # print(cent_x)
+            height, width, _ = panorama.shape
+            position = (int(cent_x), int(cent_y))
+            panorama = cv2.seamlessClone(warped, panorama, mask, position, cv2.NORMAL_CLONE)
+            # cv2.imshow(f"added {i}th image", panorama)
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
+            pass
+            # raise ValueError(f"Unknown blending method: {blending_method}")
 
     gray = cv2.cvtColor(panorama, cv2.COLOR_BGR2GRAY)
     ys, xs = np.where(gray > 0)
     panorama = panorama[ys.min():ys.max()+1, xs.min():xs.max()+1]
 
+    if method == "cylindrical" and correct_vertical_drift_at_the_end:
+        height, width, _ = panorama.shape
+        panorama = cv2.warpPerspective(
+            panorama,
+            H_global,
+            (width, height),
+            flags=cv2.INTER_LINEAR
+        )
     return panorama
 
 
