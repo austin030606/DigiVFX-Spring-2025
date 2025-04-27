@@ -350,7 +350,8 @@ def stitch_images(
         detection_method = "Harris", 
         descriptor_method = "PCA_SIFT", 
         correct_vertical_drift_at_the_end = False, 
-        bruteforce_match=False):
+        bruteforce_match=False,
+        ransac="translation"):
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
     MAX_MATCHES = 400
@@ -388,9 +389,12 @@ def stitch_images(
         pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
         pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
         
-        # H,_ = ransac_homography(pts1, pts2)
-        H, _ = ransac_translation(pts1, pts2)
-        H_pair.append(H)
+        if ransac == "translation":
+            H, _ = ransac_translation(pts1, pts2)
+            H_pair.append(H)
+        elif ransac == "homography":
+            H, _ = ransac_homography(pts1, pts2)
+            H_pair.append(H)
 
     # bundle
     if method == "perspective":
