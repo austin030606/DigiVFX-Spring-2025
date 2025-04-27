@@ -340,7 +340,17 @@ def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
 
 
 
-def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, method = "cylindrical", blending_method = "linear", detection_method = "Harris", descriptor_method = "PCA_SIFT", correct_vertical_drift_at_the_end = False):
+def stitch_images(
+        image_paths, 
+        f, 
+        blend_linear=True, 
+        use_similarity=False, 
+        method = "cylindrical", 
+        blending_method = "linear", 
+        detection_method = "Harris", 
+        descriptor_method = "PCA_SIFT", 
+        correct_vertical_drift_at_the_end = False, 
+        bruteforce_match=False):
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
     MAX_MATCHES = 400
@@ -364,7 +374,7 @@ def stitch_images(image_paths, f, blend_linear=True, use_similarity=False, metho
         kp1, des1 = extract_features(cyl_imgs[i], detection_method, descriptor_method)
         kp2, des2 = extract_features(cyl_imgs[i+1], detection_method, descriptor_method)
 
-        matches  = match_features(des1, des2, descriptor_method=descriptor_method)
+        matches  = match_features(des1, des2, descriptor_method=descriptor_method, bruteforce=bruteforce_match)
         
         for m in matches:
             p_i = np.float32(kp1[m.queryIdx].pt)
