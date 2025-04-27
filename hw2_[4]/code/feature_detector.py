@@ -687,14 +687,55 @@ class PCA_SIFT(SIFT):
         feature_vector /= np.linalg.norm(feature_vector)
         return feature_vector
     
-    def compute_descriptors(self, feature_vecs1, feature_vecs2):
-        X = np.concatenate([feature_vecs1, feature_vecs2])
+    def project_descriptors(self, feature_vecs1, feature_vecs2, components_file=None, mean_file=None):
+        if components_file == None or mean_file == None:
+            X = np.concatenate([feature_vecs1, feature_vecs2])
+
+            mean = X.mean(axis=0)
+
+            X_c = X - mean
+            feature_vecs1_c = feature_vecs1 - mean
+            feature_vecs2_c = feature_vecs2 - mean
+
+            # C = X_c.T.dot(X_c) / X.shape[0]
+
+            # eigen_vals, eigen_vecs = np.linalg.eigh(C)
+
+            # idx = np.argsort(eigen_vals)[::-1]
+            # eigen_vals = eigen_vals[idx]
+            # eigen_vecs = eigen_vecs[:, idx]
+            
+            # components = eigen_vecs[:, :self.n] 
+
+            # descriptors = X_c.dot(components)
+
+            U, s, Vt = np.linalg.svd(X_c, full_matrices=False)
+            components = Vt[:self.n].T
+        else:
+            with open(components_file, 'rb') as f:
+                components = np.load(f)
+            with open(mean_file, 'rb') as f:
+                mean = np.load(f)
+            feature_vecs1_c = feature_vecs1 - mean
+            feature_vecs2_c = feature_vecs2 - mean
+        # for j in range(20):
+        #     # if the dot‐product is negative, flip the SVD vector
+        #     if np.dot(components[:, j], svdcomponents[:, j]) < 0:
+        #         svdcomponents[:, j] *= -1
+        descriptors1 = feature_vecs1_c.dot(components)
+        descriptors2 = feature_vecs2_c.dot(components)
+        return descriptors1, descriptors2
+        # print(np.sum(np.sum(np.sqrt((descriptors - descriptors2) ** 2), axis=1)))
+        # print(Vt.dot(Vt.T))
+
+    def compute_components(self, list_of_feature_vecs):
+        X = list_of_feature_vecs[0]
+        for i in range(1, len(list_of_feature_vecs)):
+            X = np.concatenate([X, list_of_feature_vecs[i]])
 
         mean = X.mean(axis=0)
 
         X_c = X - mean
-        feature_vecs1_c = feature_vecs1 - mean
-        feature_vecs2_c = feature_vecs2 - mean
 
         # C = X_c.T.dot(X_c) / X.shape[0]
 
@@ -710,12 +751,6 @@ class PCA_SIFT(SIFT):
 
         U, s, Vt = np.linalg.svd(X_c, full_matrices=False)
         components = Vt[:self.n].T
-        # for j in range(20):
-        #     # if the dot‐product is negative, flip the SVD vector
-        #     if np.dot(components[:, j], svdcomponents[:, j]) < 0:
-        #         svdcomponents[:, j] *= -1
-        descriptors1 = feature_vecs1_c.dot(components)
-        descriptors2 = feature_vecs2_c.dot(components)
-        return descriptors1, descriptors2
-        # print(np.sum(np.sum(np.sqrt((descriptors - descriptors2) ** 2), axis=1)))
-        # print(Vt.dot(Vt.T))
+        np.save('components.npy', components)
+        np.save('mean.npy', mean)
+        return components

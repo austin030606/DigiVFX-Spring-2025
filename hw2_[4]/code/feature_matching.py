@@ -40,7 +40,7 @@ def match_features(desc1, desc2, ratio_thresh=0.75, descriptor_method = "SIFT"):
     if descriptor_method == "PCA_SIFT":
         # PCA_SIFT vectors needs to be projected into the same space before comparison
         pca_sift = PCA_SIFT()
-        desc1, desc2 = pca_sift.compute_descriptors(desc1, desc2)
+        desc1, desc2 = pca_sift.project_descriptors(desc1, desc2)
     tree = cKDTree(desc2)
     distances, indices = tree.query(desc1, k=2)
 
