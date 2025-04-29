@@ -295,7 +295,7 @@ def wrap_rodrigues(rvecs):
     angles_wrapped = (angles + np.pi) % (2*np.pi) - np.pi
     return axes * angles_wrapped[:,None]
 
-def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=300):
+def bundle_adjust_thetas_f(tracks, img_wh, f_init=None, max_nfev=300):
     if not tracks:
         raise ValueError("tracks is empty")
 
@@ -443,7 +443,7 @@ def stitch_images(
     # bundle
     if method == "perspective":
         img_h, img_w = cyl_imgs[0].shape[:2]     # they’re still perspective now
-        theta, f_opt = bundle_adjust_yaw_f(tracks, (img_w, img_h), max_nfev=None)    
+        theta, f_opt = bundle_adjust_thetas_f(tracks, (img_w, img_h), max_nfev=None)    
         print("estimated focal lengths:", f_opt)
     # 2. pick middle image as reference
     ref_idx  = N // 2
