@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from collections import defaultdict
 import glob
+import gc
 from feature_matching import *
 # from blending import poisson_blend
 from scipy.optimize import least_squares
@@ -268,7 +269,7 @@ def accumulate_homographies(H_pair, ref_idx):
 
 # Bundle Adjustment
 def rot_y(theta):
-    c, s = np.cos(theta), np.sin(theta)
+    c, s = np.cos(theta[1]), np.sin(theta[1])
     return np.array([[ c, 0,  s],
                      [ 0, 1,  0],
                      [-s, 0,  c]])
@@ -281,61 +282,100 @@ def make_jac_sparsity(tracks, N):
 
     for k, (i, _, j, _,) in enumerate(tracks):
         r0 = 2 * k
-        cols = (i, j, n-1)          # θ_i, θ_j, log f
+        cols = (i, j, n-1)          # theta_i, theta_j, log f
         for c in cols:
             J[r0, c]     = 1        # x‑residual
             J[r0 + 1, c] = 1        # y‑residual
     return J.tocsr()
 
-def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=200):
+def wrap_rodrigues(rvecs):
+    norms = np.linalg.norm(rvecs, axis=1, keepdims=True)
+    axes  = rvecs / norms                                      
+    angles= norms.flatten()
+    angles_wrapped = (angles + np.pi) % (2*np.pi) - np.pi
+    return axes * angles_wrapped[:,None]
+
+def bundle_adjust_yaw_f(tracks, img_wh, f_init=None, max_nfev=300):
     if not tracks:
         raise ValueError("tracks is empty")
 
     # number of images
     N = 1 + max(max(t[0], t[2]) for t in tracks)
+    ref_index = N // 2
 
     w, h  = img_wh
     cx, cy = w / 2.0, h / 2.0
     f0 = f_init if f_init is not None else 0.5 * w
 
-    def K(f):
-        return np.array([[f, 0, cx],
-                         [0, f, cy],
-                         [0, 0, 1]])
+    for cur_N in tqdm(range(2, N+1), desc="Bundle adjustment"):
+        def K(f):
+            K_fs = []
+            K_f_invs = []
+            for fi in f:
+                K_fs.append(np.array([[fi,  0, cx],
+                                      [ 0, fi, cy],
+                                      [ 0,  0,  1]]))
+                K_f_invs.append(np.linalg.inv(K_fs[-1]))
+            return K_fs, K_f_invs
 
-    def resid(p):
-        theta = p[:-1]
-        f     = np.exp(p[-1])
-        K_f   = K(f)
-        Kinv  = np.linalg.inv(K_f)
+        def resid(p):
+            theta = p[:3*cur_N].reshape(cur_N, 3)
+            f     = p[3*cur_N:]
+            K_f, Kinv = K(f)
 
-        errs = []
-        for i, p_i, j, p_j in tracks:
-            R_i, R_j = rot_y(theta[i]), rot_y(theta[j])
-            H_ij = K_f @ (R_j @ R_i.T) @ Kinv
+            errs = []
+            for i, p_i, j, p_j in tracks:
+                if j <= cur_N - 1:
+                    R_i = cv2.Rodrigues(theta[i])[0]
+                    R_j = cv2.Rodrigues(theta[j])[0]
+                    H_ij = K_f[i] @ (R_i @ R_j.T) @ Kinv[j]
 
-            q = H_ij @ np.append(p_i, 1.0)
-            q /= q[2]
-            errs.extend(q[:2] - p_j)
-        return np.asarray(errs, np.float64)
+                    q = H_ij @ np.append(p_j, 1.0)
+                    q /= q[2]
+                    errs.extend(p_i - q[:2])
+                else:
+                    break
+            return np.asarray(errs, np.float64)
+            errs = np.asarray(errs, np.float64)
+            if cur_N == 2:
+                x_max = 1e12
+            else:
+                x_max = 1 + (N - cur_N) * 0.5
+            
+            return np.sign(errs) * np.minimum(np.abs(errs), x_max)
+        
+        x0 = np.zeros(4 * cur_N)
+        if cur_N > 2:
+            x0[:3*(cur_N-1)] = res.x[:3*(cur_N-1)]
+            x0[3*(cur_N-1):3*cur_N] = x0[3*(cur_N-1)-3:3*cur_N-3]
+            # x0[:3*(cur_N)] = wrap_rodrigues(x0[:3*(cur_N)].reshape(cur_N, 3)).flatten()
 
-    x0 = np.zeros(N + 1); x0[-1] = np.log(f0)
+            x0[3*cur_N:4*cur_N-1] = res.x[3*(cur_N-1):]
+            x0[-1] = x0[-2]
+            # print(x0)
+        else:
+            x0[-1] = f0
+            x0[-2] = f0
 
-    # res = least_squares(resid, x0,
-    #                     jac='2-point',      # finite‑difference Jacobian
-    #                     loss='soft_l1', f_scale=2.0,
-    #                     max_nfev=max_nfev)
+        res = least_squares(resid, x0,
+                            jac='2-point',      # finite‑difference Jacobian
+                            loss='soft_l1', f_scale=2.0,
+                            max_nfev=max_nfev)
     
-    Jsp = make_jac_sparsity(tracks, N)
-    res = least_squares(
-        resid, x0,
-        jac_sparsity=Jsp,          # <-- key line
-        loss='soft_l1', f_scale=2.0,
-        max_nfev=max_nfev,         # keep your existing cap
-        x_scale='jac')
+    # Jsp = make_jac_sparsity(tracks, N)
+    # res = least_squares(
+    #     resid, x0,
+    #     jac_sparsity=Jsp,          # <-- key line
+    #     loss='soft_l1', f_scale=2.0,
+    #     max_nfev=max_nfev,         # keep your existing cap
+    #     x_scale='jac')
 
-    theta_opt = res.x[:-1]
-    f_opt     = np.exp(res.x[-1])
+    theta_opt = res.x[:3*N].reshape(N, 3)
+    # theta_opt = wrap_rodrigues(theta_opt)
+    f_opt     = res.x[3*N:]
+    # print(res.x)
+    del res
+    gc.collect()
     return theta_opt, f_opt
 
 
@@ -355,6 +395,7 @@ def stitch_images(
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
     MAX_MATCHES = 400
+    random.seed(0)
     assert N >= 2, "Need at least two images"
 
     if method == "cylindrical":
@@ -377,10 +418,10 @@ def stitch_images(
 
         matches  = match_features(des1, des2, descriptor_method=descriptor_method, bruteforce=bruteforce_match)
         
-        for m in matches:
-            p_i = np.float32(kp1[m.queryIdx].pt)
-            p_j = np.float32(kp2[m.trainIdx].pt)
-            tracks.append((i, p_i, i+1, p_j))
+        # for m in matches:
+        #     p_i = np.float32(kp1[m.queryIdx].pt)
+        #     p_j = np.float32(kp2[m.trainIdx].pt)
+        #     tracks.append((i, p_i, i+1, p_j))
             
         if len(matches) < 4:
             raise RuntimeError(f"Not enough matches between {i} and {i+1}")
@@ -390,26 +431,34 @@ def stitch_images(
         pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
         
         if ransac == "translation":
-            H, _ = ransac_translation(pts1, pts2)
+            H, inls = ransac_translation(pts1, pts2)
+            for inl in inls:
+                tracks.append((i, pts1[inl], i+1, pts2[inl]))
             H_pair.append(H)
         elif ransac == "homography":
-            H, _ = ransac_homography(pts1, pts2)
+            H, inls = ransac_homography(pts1, pts2)
+            for inl in inls:
+                tracks.append((i, pts1[inl], i+1, pts2[inl]))
             H_pair.append(H)
-
     # bundle
     if method == "perspective":
         img_h, img_w = cyl_imgs[0].shape[:2]     # they’re still perspective now
-        theta, f_opt = bundle_adjust_yaw_f(tracks, (img_w, img_h))    
-        
+        theta, f_opt = bundle_adjust_yaw_f(tracks, (img_w, img_h), max_nfev=None)    
+        print("estimated focal lengths:", f_opt)
     # 2. pick middle image as reference
     ref_idx  = N // 2
     
     if method == "perspective":    
-        K = np.array([[f_opt, 0, img_w/2],
-                [0, f_opt, img_h/2],
-                [0, 0, 1]], dtype=np.float64)
-
-        R_y = [rot_y(t) for t in theta]
+        K = []
+        Kinv = []
+        for f in f_opt:
+            K.append(np.array([[f, 0, img_w/2],
+                               [0, f, img_h/2],
+                               [0, 0, 1]], dtype=np.float64))
+            Kinv.append(np.linalg.inv(K[-1]))
+        R_y = []
+        for i in range(theta.shape[0]):
+            R_y.append(cv2.Rodrigues(theta[i])[0])
 
     # 3. accumulate H_i→ref
     if method == "cylindrical":
@@ -417,14 +466,13 @@ def stitch_images(
         H_to_ref, H_global = correct_vertical_drift(H_to_ref, correct_vertical_drift_at_the_end)
     else:
             # H_i→ref = K · R_ref · R_iᵀ · K⁻¹
-        Kinv  = np.linalg.inv(K)
         H_to_ref = []
         R_ref = R_y[ref_idx]
         for i in range(len(theta)):
-            H = K @ (R_ref @ R_y[i].T) @ Kinv
+            H = K[ref_idx] @ (R_ref @ R_y[i].T) @ Kinv[i]
             H /= H[2,2]
             H_to_ref.append(H)
-
+        H_to_ref, H_global = correct_vertical_drift(H_to_ref, correct_vertical_drift_at_the_end)
     # 4. find panorama canvas bounds
     corners = []
     for i, img in enumerate(cyl_imgs):
@@ -439,12 +487,17 @@ def stitch_images(
     H_trans   = np.array([[1,0,tx],[0,1,ty],[0,0,1]])
 
     canvas_sz = (xmax-xmin, ymax-ymin)        # (W,H)
+    if method == "perspective":
+        img_h, img_w = cyl_imgs[0].shape[:2]
+        canvas_sz = (img_w * N, img_h * 2)
 
     # 5. warp & blend
-    acc   = np.zeros((ymax-ymin, xmax-xmin, 3), np.float32)
-    mask  = np.zeros((ymax-ymin, xmax-xmin, 1), np.float32)   # weight map
+    acc   = np.zeros((canvas_sz[1], canvas_sz[0], 3), np.float32)
+    mask  = np.zeros((canvas_sz[1], canvas_sz[0], 1), np.float32)   # weight map
 
     panorama = cv2.warpPerspective(cyl_imgs[ref_idx], H_trans @ H_to_ref[ref_idx], canvas_sz)
+    if method == "perspective":
+        panorama = np.zeros(panorama.shape)
 
     # blending
     if blending_method == "poisson":
@@ -474,11 +527,108 @@ def stitch_images(
             panorama = (acc / np.maximum(mask,1e-8)).astype(np.uint8)
 
     # cv2.imshow("panorama", panorama)
+    R_drift = R_y[0] @ R_y[ref_idx].T
+    drift1 = cv2.Rodrigues(R_drift)[0]
+    drift1 /= np.linalg.norm(drift1)
+    # print(drift1)
+    R_drift = R_y[N-1] @ R_y[ref_idx].T
+    drift2 = cv2.Rodrigues(R_drift)[0]
+    drift2 /= np.linalg.norm(drift2)
+    # print(drift2)
+    # exit()
+    drift_amount = (np.abs(drift1[0][0] + drift1[2][0]) + np.abs(drift2[0][0] + drift2[2][0]))/2
+    R_ref = cv2.Rodrigues(np.array([drift_amount,0.0,0.0]))[0] @ R_y[ref_idx]
+    # np.abs(drift[2][0])
+    # print(drift_amount)
+    # print(H_to_ref[0])
     for i, img in enumerate(cyl_imgs):
         if False and i == ref_idx and blending_method == "poisson":   # the reference is already in place
             continue
-        H      = H_trans @ H_to_ref[i]
-        warped = cv2.warpPerspective(img, H, canvas_sz)
+        if method == 'cylindrical':
+            H      = H_trans @ H_to_ref[i]
+            warped = cv2.warpPerspective(img, H, canvas_sz)
+        elif method == 'perspective':
+            img_i    = img
+            f_i      = f_opt[i]
+            R_rel    = R_y[i] @ R_ref.T   # rotation from image i into ref frame
+            # build a H×W grid of panorama‐pixel coordinates:
+            H_out, W_out, _ = panorama.shape
+            y_inds, x_inds = np.indices((H_out, W_out), dtype=np.float32)
+            cx, cy = img_w/2, img_h/2
+
+            # normalized image‐plane coords for each pano‐pixel (on a unit cylinder):
+            theta = (x_inds - W_out/2) / f_opt[ref_idx]
+            phi = (y_inds - H_out/2) / f_opt[ref_idx]
+            Xc =  np.sin(theta)
+            Yc =  phi
+            Zc =  np.cos(theta)
+            # Xc = np.sin(theta) * np.cos(phi)
+            # Yc = np.sin(phi)
+            # Zc = np.cos(theta) * np.cos(phi)
+
+
+            # rotate those cylinder‐rays back into img i’s camera frame:
+            rays = np.stack([Xc, Yc, Zc], axis=-1).reshape(-1,3)
+            rays_rot = rays @ R_rel.T
+            Xr, Yr, Zr = rays_rot[:,0], rays_rot[:,1], rays_rot[:,2]
+            
+            # now project back into img i’s pixel‐coords:
+            x_src = (f_i * (Xr / Zr) + cx).reshape(H_out, W_out).astype(np.float32)
+            y_src = (f_i * (Yr / Zr) + cy).reshape(H_out, W_out).astype(np.float32)
+
+            invalid = (Zr.reshape(H_out, W_out) < 0)
+            # print(Zr)
+            # print(invalid)
+            x_src[invalid] = -1
+            y_src[invalid] = -1
+
+            corners = np.array([
+                [    0,     0],
+                [img_w,     0],
+                [img_w, img_h],
+                [    0, img_h]
+            ], dtype=np.float32)
+
+            uv1 = np.column_stack([
+                (corners[:,0] - cx) / f_i,
+                (corners[:,1] - cy) / f_i,
+                np.ones(4)
+            ])  # (4,3)
+
+            rays_ref = (uv1 @ R_rel) # (4,3)
+
+            thetas = np.arctan2(rays_ref[:,0], rays_ref[:,2])  # θ = atan2(X,Z)
+            # print(thetas)
+            if H_to_ref[0][0, 2] > 0:
+                if i == 0 and (thetas.max() - thetas.min() > 1):
+                    thetas[thetas < 0] += 2 * np.pi
+                elif i == N - 1 and (thetas.max() - thetas.min() > 1):
+                    thetas[thetas > 0] -= 2 * np.pi
+            else:
+                if i == 0 and (thetas.max() - thetas.min() > 1):
+                    thetas[thetas > 0] -= 2 * np.pi
+                elif i == N - 1 and (thetas.max() - thetas.min() > 1):
+                    thetas[thetas < 0] += 2 * np.pi
+            theta_min, theta_max = thetas.min(), thetas.max()
+            print("stitching: ", theta_min, theta_max)
+
+            invalid = (theta <= theta_min) | (theta >= theta_max)
+            x_src[invalid] = -1
+            y_src[invalid] = -1
+
+            # remap image i
+            warped = cv2.remap(
+                img_i,
+                x_src, y_src,
+                interpolation=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT
+            )
+            # cv2.imwrite(f"tmp/warped{i}.jpg", warped)
+            # H      = H_trans @ H_to_ref[i]
+            # warped = cv2.warpPerspective(img, H, canvas_sz)
+            # cv2.imshow(f"{i}th image", cv2.resize(warped, (0, 0), fx=0.1, fy=0.1))
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
 
         # weight = 1 inside warped region, 0 outside
         gray   = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
