@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from feature_detector import SIFT, PCA_SIFT, HarrisCornerDetector
 
-img1 = cv2.imread('../data/parrington/prtn01.jpg', cv2.IMREAD_GRAYSCALE)
+img1 = cv2.imread('../data/parrington/prtn00.jpg', cv2.IMREAD_GRAYSCALE)
 img2 = cv2.imread('../data/parrington/prtn00.jpg', cv2.IMREAD_GRAYSCALE)
 
 # H = np.loadtxt('../data/H1to2p')
@@ -11,7 +11,7 @@ my_sift = SIFT()
 
 # my_kps1, my_desc1 = my_sift.detectAndCompute(img2)
 kps1, desc1 = my_sift.detectAndCompute(img1)
-kps2, desc2 = my_sift.detectAndCompute(img2)
+# kps2, desc2 = my_sift.detectAndCompute(img2)
 # harris = HarrisCornerDetector()
 # kps1 = harris.detect(img1)
 # kps2 = harris.detect(img2)
@@ -21,8 +21,8 @@ kps2, desc2 = my_sift.detectAndCompute(img2)
 
 # desc1, desc2 = my_sift.project_descriptors(desc1, desc2, 'components.npy', 'mean.npy')
 
-desc1 = np.array(desc1).astype(np.float32)
-desc2 = np.array(desc2).astype(np.float32)
+# desc1 = np.array(desc1).astype(np.float32)
+# desc2 = np.array(desc2).astype(np.float32)
 
 # sift = cv2.SIFT_create()
 # kps1, desc1 = sift.detectAndCompute(img2,None)
@@ -31,25 +31,26 @@ desc2 = np.array(desc2).astype(np.float32)
 # # # print(desc1.shape)
 
 
-# my_img_with_arrows = cv2.cvtColor(img2.copy(), cv2.COLOR_GRAY2BGR)
+my_img_with_arrows = cv2.cvtColor(img2.copy(), cv2.COLOR_GRAY2BGR)
 
-# # 3. for each keypoint, draw an arrow
-# arrow_length = 15  # tweak to taste
-# for kp in kps1:
-#     octave_idx = kp.octave_idx
-#     y = kp.y
-#     x = kp.x
-#     coord_scale = 2 ** (octave_idx - 1)
-#     y = int(np.round(y * coord_scale))
-#     x = int(np.round(x * coord_scale))
-#     # cv2.circle(im_with_keypoints, (x, y), 2, (0, 255, 0), 1)
+# 3. for each keypoint, draw an arrow
+arrow_length = 15  # tweak to taste
+for kp in kps1:
+    octave_idx = kp.octave_idx
+    y = kp.y
+    x = kp.x
+    coord_scale = 2 ** (octave_idx - 1)
+    y = int(np.round(y * coord_scale))
+    x = int(np.round(x * coord_scale))
+    # cv2.circle(my_img_with_arrows, (x, y), 2, (0, 255, 0), 2)
 
-#     angle = kp.orientation
-#     end_x = int(x + 5 * coord_scale * np.cos(np.deg2rad(angle)))
-#     end_y = int(y + 5 * coord_scale * np.sin(np.deg2rad(angle)))
-#     cv2.arrowedLine(my_img_with_arrows, (x, y), (end_x, end_y), (255, 50, 50), 1, tipLength=0.3)
-# # # 4. display
-# cv2.imshow("my oriented keypoints", my_img_with_arrows)
+    angle = kp.orientation
+    end_x = int(x + 5 * coord_scale * np.cos(np.deg2rad(angle)))
+    end_y = int(y + 5 * coord_scale * np.sin(np.deg2rad(angle)))
+    cv2.arrowedLine(my_img_with_arrows, (x, y), (end_x, end_y), (0, 255, 0), 1, tipLength=0.3)
+# # 4. display
+cv2.imshow("my oriented keypoints", my_img_with_arrows)
+cv2.imwrite("parrington 0 SIFT 31600410.jpg", my_img_with_arrows)
 
 # # img_with_arrows = cv2.cvtColor(img2.copy(), cv2.COLOR_GRAY2BGR)
 
@@ -71,11 +72,11 @@ desc2 = np.array(desc2).astype(np.float32)
 
 # # 4. display
 # # cv2.imshow("oriented keypoints", img_with_arrows)
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
+cv2.waitKey(0)
+cv2.destroyAllWindows()
 
 
-# exit()
+exit()
 bf = cv2.BFMatcher(cv2.NORM_L2)
 # k=2 for Lowe’s ratio test
 matches = bf.knnMatch(desc1, desc2, k=2)
