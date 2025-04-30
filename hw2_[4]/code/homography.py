@@ -198,12 +198,12 @@ def correct_vertical_drift(H_to_ref, correct_vertical_drift_at_the_end):
     A = np.vstack([dx, np.ones_like(dx)]).T
     a, b = np.linalg.lstsq(A, dy, rcond=None)[0]
 
-    if correct_vertical_drift_at_the_end:
-        H_global = np.array([[1.0, 0.0, 0.0],
-                            [ -a, 1.0,  -b],
-                            [0.0, 0.0, 1.0]])
-        
-        return H_to_ref, H_global
+    # if correct_vertical_drift_at_the_end:
+    H_global = np.array([[1.0, 0.0, 0.0],
+                        [ -a, 1.0,  -b],
+                        [0.0, 0.0, 1.0]])
+    
+    return H_to_ref, H_global
     # 3. build corrected homographies
     H_corr = []
     for H in H_to_ref:
@@ -430,12 +430,12 @@ def stitch_images(
         pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
         pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
         
-        if ransac == "translation":
+        if method == "cylindrical":
             H, inls = ransac_translation(pts1, pts2)
             for inl in inls:
                 tracks.append((i, pts1[inl], i+1, pts2[inl]))
             H_pair.append(H)
-        elif ransac == "homography":
+        elif method == "perspective":
             H, inls = ransac_homography(pts1, pts2)
             for inl in inls:
                 tracks.append((i, pts1[inl], i+1, pts2[inl]))
@@ -526,21 +526,22 @@ def stitch_images(
 
             panorama = (acc / np.maximum(mask,1e-8)).astype(np.uint8)
 
-    # cv2.imshow("panorama", panorama)
-    R_drift = R_y[0] @ R_y[ref_idx].T
-    drift1 = cv2.Rodrigues(R_drift)[0]
-    drift1 /= np.linalg.norm(drift1)
-    # print(drift1)
-    R_drift = R_y[N-1] @ R_y[ref_idx].T
-    drift2 = cv2.Rodrigues(R_drift)[0]
-    drift2 /= np.linalg.norm(drift2)
-    # print(drift2)
-    # exit()
-    drift_amount = (np.abs(drift1[0][0] + drift1[2][0]) + np.abs(drift2[0][0] + drift2[2][0]))/2
-    R_ref = cv2.Rodrigues(np.array([drift_amount,0.0,0.0]))[0] @ R_y[ref_idx]
-    # np.abs(drift[2][0])
-    # print(drift_amount)
-    # print(H_to_ref[0])
+    if method == "perspective" and correct_vertical_drift_at_the_end:
+        # cv2.imshow("panorama", panorama)
+        R_drift = R_y[0] @ R_y[ref_idx].T
+        drift1 = cv2.Rodrigues(R_drift)[0]
+        drift1 /= np.linalg.norm(drift1)
+        # print(drift1)
+        R_drift = R_y[N-1] @ R_y[ref_idx].T
+        drift2 = cv2.Rodrigues(R_drift)[0]
+        drift2 /= np.linalg.norm(drift2)
+        # print(drift2)
+        # exit()
+        drift_amount = (np.abs(drift1[0][0] + drift1[2][0]) + np.abs(drift2[0][0] + drift2[2][0]))/2
+        R_ref = cv2.Rodrigues(np.array([drift_amount,0.0,0.0]))[0] @ R_y[ref_idx]
+        # np.abs(drift[2][0])
+        # print(drift_amount)
+        # print(H_to_ref[0])
     for i, img in enumerate(cyl_imgs):
         if False and i == ref_idx and blending_method == "poisson":   # the reference is already in place
             continue

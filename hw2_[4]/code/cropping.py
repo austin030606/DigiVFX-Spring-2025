@@ -3,7 +3,7 @@ import numpy as np
 
 
 # # 1. load and build mask
-img = cv2.imread('panorama bundle parrington cropped.jpg')
+img = cv2.imread('panorama bundle parrington.jpg')
 h, w, _ = img.shape
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 mask = (gray == 0).astype(np.int32)
@@ -17,8 +17,14 @@ valid_rows = np.where(row_frac <= threshold * 0.5)[0]
 # print(row_frac)
 # exit()
 # # 3. crop
-top, bottom = valid_rows[0], valid_rows[-1]
-left, right = valid_cols[0], valid_cols[-1]
+if valid_rows.size > 0:
+    top, bottom = valid_rows[0], valid_rows[-1]
+else:
+    top, bottom = 0, h-1
+if valid_cols.size > 0:
+    left, right = valid_cols[0], valid_cols[-1]
+else:
+    left, right = 0, w-1
 cropped = img[top:bottom, left:right]
 # # cropped = img
 cv2.imwrite('panorama bundle parrington cropped.jpg', cropped)
