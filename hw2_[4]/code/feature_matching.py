@@ -36,11 +36,14 @@ def extract_features(img, detection_method = "SIFT", descriptor_method = "PCA_SI
     
     return keypoints, descriptors
 
-def match_features(desc1, desc2, ratio_thresh=0.75, descriptor_method = "SIFT", bruteforce=False):
+def match_features(desc1, desc2, ratio_thresh=0.75, descriptor_method = "SIFT", bruteforce=False, use_precompute_pca=True):
     if descriptor_method == "PCA_SIFT":
         # PCA_SIFT vectors needs to be projected into the same space before comparison
         pca_sift = PCA_SIFT()
-        desc1, desc2 = pca_sift.project_descriptors(desc1, desc2)
+        if use_precompute_pca:
+            desc1, desc2 = pca_sift.project_descriptors(desc1, desc2, 'components.npy', 'mean.npy')
+        else:
+            desc1, desc2 = pca_sift.project_descriptors(desc1, desc2)
     
     if not bruteforce:
         tree = cKDTree(desc2)

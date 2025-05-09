@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 from feature_detector import SIFT, PCA_SIFT, HarrisCornerDetector
 
-img1 = cv2.imread('../data/parrington/prtn00.jpg', cv2.IMREAD_GRAYSCALE)
-img2 = cv2.imread('../data/parrington/prtn00.jpg', cv2.IMREAD_GRAYSCALE)
+img1 = cv2.imread('../data/DSCF4057_resized.jpg', cv2.IMREAD_GRAYSCALE)
+img2 = cv2.imread('../data/DSCF4058_resized.jpg', cv2.IMREAD_GRAYSCALE)
 
 # H = np.loadtxt('../data/H1to2p')
 
@@ -11,7 +11,7 @@ my_sift = SIFT()
 
 # my_kps1, my_desc1 = my_sift.detectAndCompute(img2)
 kps1, desc1 = my_sift.detectAndCompute(img1)
-# kps2, desc2 = my_sift.detectAndCompute(img2)
+kps2, desc2 = my_sift.detectAndCompute(img2)
 # harris = HarrisCornerDetector()
 # kps1 = harris.detect(img1)
 # kps2 = harris.detect(img2)
@@ -21,8 +21,8 @@ kps1, desc1 = my_sift.detectAndCompute(img1)
 
 # desc1, desc2 = my_sift.project_descriptors(desc1, desc2, 'components.npy', 'mean.npy')
 
-# desc1 = np.array(desc1).astype(np.float32)
-# desc2 = np.array(desc2).astype(np.float32)
+desc1 = np.array(desc1).astype(np.float32)
+desc2 = np.array(desc2).astype(np.float32)
 
 # sift = cv2.SIFT_create()
 # kps1, desc1 = sift.detectAndCompute(img2,None)
@@ -50,7 +50,7 @@ for kp in kps1:
     cv2.arrowedLine(my_img_with_arrows, (x, y), (end_x, end_y), (0, 255, 0), 1, tipLength=0.3)
 # # 4. display
 cv2.imshow("my oriented keypoints", my_img_with_arrows)
-cv2.imwrite("parrington 0 SIFT 31600410.jpg", my_img_with_arrows)
+# cv2.imwrite("parrington 0 SIFT 31600410.jpg", my_img_with_arrows)
 
 # # img_with_arrows = cv2.cvtColor(img2.copy(), cv2.COLOR_GRAY2BGR)
 
@@ -76,13 +76,13 @@ cv2.waitKey(0)
 cv2.destroyAllWindows()
 
 
-exit()
+# exit()
 bf = cv2.BFMatcher(cv2.NORM_L2)
 # k=2 for Lowe’s ratio test
 matches = bf.knnMatch(desc1, desc2, k=2)
 
 good = []
-ratio_thresh = 0.75
+ratio_thresh = 0.65
 for m,n in matches:
     if m.distance < ratio_thresh * n.distance:
         good.append([m])

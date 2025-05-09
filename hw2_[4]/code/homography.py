@@ -391,6 +391,7 @@ def stitch_images(
         descriptor_method = "PCA_SIFT", 
         correct_vertical_drift_at_the_end = False, 
         bruteforce_match=False,
+        use_precompute_pca=True,
         ransac="translation"):
     imgs   = [cv2.imread(str(p)) for p in image_paths]
     N      = len(imgs)  
@@ -416,7 +417,7 @@ def stitch_images(
         kp1, des1 = extract_features(cyl_imgs[i], detection_method, descriptor_method)
         kp2, des2 = extract_features(cyl_imgs[i+1], detection_method, descriptor_method)
 
-        matches  = match_features(des1, des2, descriptor_method=descriptor_method, bruteforce=bruteforce_match)
+        matches  = match_features(des1, des2, descriptor_method=descriptor_method, bruteforce=bruteforce_match, use_precompute_pca=use_precompute_pca)
         
         # for m in matches:
         #     p_i = np.float32(kp1[m.queryIdx].pt)

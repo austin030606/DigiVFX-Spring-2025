@@ -751,6 +751,6 @@ class PCA_SIFT(SIFT):
 
         U, s, Vt = np.linalg.svd(X_c, full_matrices=False)
         components = Vt[:self.n].T
-        np.save('components.npy', components)
-        np.save('mean.npy', mean)
+        np.save('new components.npy', components)
+        np.save('new mean.npy', mean)
         return components
